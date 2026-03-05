@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, func, Float, ForeignKey, Text, JSON, Numeric, Date
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, func, Float, ForeignKey, Text, JSON, Numeric, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from datetime import datetime
@@ -152,7 +152,7 @@ class ProrrogacaoContrato(Base):
 class MotoristaEmpresa(Base):
     __tablename__ = "motorista_empresa"
     __table_args__ = (
-        {"UniqueConstraint": "empresa_id, cliente_id"},
+        UniqueConstraint("empresa_id", "cliente_id", name="uq_motorista_empresa"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -236,7 +236,7 @@ class ParcelaSeguro(Base):
 class IpvaAliquota(Base):
     __tablename__ = "ipva_aliquota"
     __table_args__ = (
-        {"UniqueConstraint": "estado, tipo_veiculo"},
+        UniqueConstraint("estado", "tipo_veiculo", name="uq_ipva_aliquota"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -381,9 +381,6 @@ class Documento(Base):
 
 class Configuracao(Base):
     __tablename__ = "configuracoes"
-    __table_args__ = (
-        {"UniqueConstraint": "chave"},
-    )
 
     id = Column(Integer, primary_key=True, index=True)
     chave = Column(String, unique=True, nullable=False)
