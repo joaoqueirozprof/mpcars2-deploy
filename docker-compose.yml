@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  mpcars2-db:
+    image: postgres:16-alpine
+    container_name: mpcars2-db
+    restart: always
+    environment:
+      POSTGRES_DB: mpcars2
+      POSTGRES_USER: mpcars2
+      POSTGRES_PASSWORD: mpcars2pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpcars2"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mpcars2-redis:
+    image: redis:7-alpine
+    container_name: mpcars2-redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mpcars2-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mpcars2-api
+    restart: always
+    ports:
+      - "8002:8000"
+    environment:
+      DATABASE_URL: postgresql://mpcars2:mpcars2pass@mpcars2-db:5432/mpcars2
+      REDIS_URL: redis://mpcars2-redis:6379/0
+      SECRET_KEY: mpcars2-secret-key-production-2024
+    depends_on:
+      mpcars2-db:
+        condition: service_healthy
+      mpcars2-redis:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+      - pdfs:/app/pdfs
+
+  mpcars2-celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mpcars2-celery
+    restart: always
+    command: celery -A app.celery_app worker -l info -B
+    environment:
+      DATABASE_URL: postgresql://mpcars2:mpcars2pass@mpcars2-db:5432/mpcars2
+      REDIS_URL: redis://mpcars2-redis:6379/0
+    depends_on:
+      mpcars2-db:
+        condition: service_healthy
+      mpcars2-redis:
+        condition: service_healthy
+
+  mpcars2-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mpcars2-web
+    restart: always
+    ports:
+      - "3002:80"
+
+  mpcars2-proxy:
+    image: nginx:alpine
+    container_name: mpcars2-proxy
+    restart: always
+    ports:
+      - "8091:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - mpcars2-api
+      - mpcars2-web
+
+  mpcars2-pgadmin:
+    image: dpage/pgadmin4
+    container_name: mpcars2-pgadmin
+    restart: always
+    ports:
+      - "8086:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mpcars.com
+      PGADMIN_DEFAULT_PASSWORD: 123456
+
+volumes:
+  pgdata:
+  uploads:
+  pdfs:
