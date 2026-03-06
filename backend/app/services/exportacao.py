@@ -174,9 +174,9 @@ class ExportacaoService:
         query = db.query(Cliente)
 
         if data_inicio:
-            query = query.filter(Cliente.data_cadastro >= data_inicio)
+            query = query.filter(Cliente.data_criacao >= data_inicio)
         if data_fim:
-            query = query.filter(Cliente.data_cadastro <= data_fim)
+            query = query.filter(Cliente.data_criacao <= data_fim)
 
         clientes = query.all()
 
@@ -225,7 +225,7 @@ class ExportacaoService:
                 cliente.cidade_residencial or "",
                 cliente.estado_residencial or "",
                 cliente.score or "",
-                ExportacaoService._format_date(cliente.data_cadastro),
+                ExportacaoService._format_date(cliente.data_criacao),
                 int(total_contratos),
                 ExportacaoService._format_currency(valor_total),
             ]
@@ -296,9 +296,10 @@ class ExportacaoService:
 
             # Cálculo ROI
             roi = 0
-            if hasattr(veiculo, "valor_aquisicao") and veiculo.valor_aquisicao:
+            valor_aquisicao = getattr(veiculo, 'valor_aquisicao', None) or 0
+            if valor_aquisicao:
                 try:
-                    roi = (float(receita_total) / float(veiculo.valor_aquisicao)) * 100
+                    roi = (float(receita_total) / float(valor_aquisicao)) * 100
                 except (ValueError, ZeroDivisionError):
                     roi = 0
 
@@ -316,7 +317,7 @@ class ExportacaoService:
                 veiculo.modelo or "",
                 veiculo.ano or "",
                 veiculo.cor or "",
-                veiculo.km_atual or 0,
+                veiculo.quilometragem or 0,
                 veiculo.status or "",
                 getattr(veiculo, "categoria", "") or "",
                 ExportacaoService._format_currency(valor_diaria),
@@ -416,7 +417,7 @@ class ExportacaoService:
                 veiculo_info,
                 ExportacaoService._format_date(contrato.data_inicio),
                 ExportacaoService._format_date(contrato.data_fim),
-                ExportacaoService._format_date(contrato.data_finalizacao),
+                ExportacaoService._format_date(contrato.data_fim),
                 contrato.km_inicial or 0,
                 contrato.km_final or 0,
                 km_percorrida,
@@ -556,17 +557,17 @@ class ExportacaoService:
         query = db.query(Contrato).filter(Contrato.status == "finalizado")
 
         if data_inicio:
-            query = query.filter(Contrato.data_finalizacao >= data_inicio)
+            query = query.filter(Contrato.data_fim >= data_inicio)
         if data_fim:
-            query = query.filter(Contrato.data_finalizacao <= data_fim)
+            query = query.filter(Contrato.data_fim <= data_fim)
 
         contratos = query.all()
 
         # Agrupa por mês
         meses = {}
         for contrato in contratos:
-            if contrato.data_finalizacao:
-                chave_mes = contrato.data_finalizacao.strftime("%m/%Y")
+            if contrato.data_fim:
+                chave_mes = contrato.data_fim.strftime("%m/%Y")
                 if chave_mes not in meses:
                     meses[chave_mes] = {"receita": 0, "despesa": 0}
                 meses[chave_mes]["receita"] += float(contrato.valor_total or 0)
@@ -622,9 +623,9 @@ class ExportacaoService:
         query = db.query(Contrato).filter(Contrato.status == "finalizado")
 
         if data_inicio:
-            query = query.filter(Contrato.data_finalizacao >= data_inicio)
+            query = query.filter(Contrato.data_fim >= data_inicio)
         if data_fim:
-            query = query.filter(Contrato.data_finalizacao <= data_fim)
+            query = query.filter(Contrato.data_fim <= data_fim)
 
         contratos = query.all()
 
@@ -652,7 +653,7 @@ class ExportacaoService:
                 veiculo_info,
                 ExportacaoService._format_date(contrato.data_inicio),
                 ExportacaoService._format_date(contrato.data_fim),
-                ExportacaoService._format_date(contrato.data_finalizacao),
+                ExportacaoService._format_date(contrato.data_fim),
                 contrato.km_inicial or 0,
                 contrato.km_final or 0,
                 km_percorrida,
@@ -748,9 +749,9 @@ class ExportacaoService:
         query = db.query(ParcelaSeguro).filter(ParcelaSeguro.status == "pago")
 
         if data_inicio:
-            query = query.filter(ParcelaSeguro.data_vencimento >= data_inicio)
+            query = query.filter(ParcelaSeguro.vencimento >= data_inicio)
         if data_fim:
-            query = query.filter(ParcelaSeguro.data_vencimento <= data_fim)
+            query = query.filter(ParcelaSeguro.vencimento <= data_fim)
 
         parcelas = query.all()
 
@@ -762,7 +763,7 @@ class ExportacaoService:
 
             row = [
                 apólice,
-                ExportacaoService._format_date(parcela.data_vencimento),
+                ExportacaoService._format_date(parcela.vencimento),
                 ExportacaoService._format_currency(parcela.valor or 0),
             ]
             rows.append(row)

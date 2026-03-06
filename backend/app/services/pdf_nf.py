@@ -246,9 +246,9 @@ class PDFNFService:
             ["KM Inicial", PDFNFService._format_number(uso.km_inicial or 0)],
             ["KM Final", PDFNFService._format_number(uso.km_final or 0)],
             ["KM Percorrida", PDFNFService._format_number(km_percorrida)],
-            ["KM de Referência (franquia)", PDFNFService._format_number(uso.km_referencia or 0)],
+            ["KM de Referência (franquia)", PDFNFService._format_number(getattr(uso, 'km_referencia', None) or 0)],
             ["KM Excedente", PDFNFService._format_number(km_excedente)],
-            ["Valor por KM Extra", PDFNFService._format_currency(uso.valor_km_extra or Decimal(0))],
+            ["Valor por KM Extra", PDFNFService._format_currency(getattr(uso, 'valor_km_extra', None) or Decimal(0))],
             ["Valor Total KM Extra", PDFNFService._format_currency(valor_km_extra)],
         ]
 
@@ -276,7 +276,7 @@ class PDFNFService:
                 PDFNFService.ALT_ROW_COLOR if idx % 2 == 1 else white
             )
             data.append([
-                despesa.tipo or "N/A",
+                getattr(despesa, 'tipo', 'Geral') or "Geral",
                 despesa.descricao or "N/A",
                 PDFNFService._format_date(despesa.data) if despesa.data else "N/A",
                 PDFNFService._format_currency(despesa.valor or Decimal(0)),
@@ -440,7 +440,7 @@ class PDFNFService:
         uso: UsoVeiculoEmpresa, km_percorrida: Decimal
     ) -> Decimal:
         """Calculate excess kilometers beyond reference"""
-        km_referencia = Decimal(uso.km_referencia or 0)
+        km_referencia = Decimal(getattr(uso, 'km_referencia', None) or 0)
         return max(Decimal(0), km_percorrida - km_referencia)
 
     @staticmethod
@@ -448,7 +448,7 @@ class PDFNFService:
         uso: UsoVeiculoEmpresa, km_excedente: Decimal
     ) -> Decimal:
         """Calculate total cost for excess kilometers"""
-        valor_km_extra = Decimal(uso.valor_km_extra or 0)
+        valor_km_extra = Decimal(getattr(uso, 'valor_km_extra', None) or 0)
         return km_excedente * valor_km_extra
 
     @staticmethod

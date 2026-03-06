@@ -196,16 +196,16 @@ class PDFContratoService:
 
         # Checklist items
         checklist_items = [
-            ("MACACO", veiculo.checklist_item_1),
-            ("ESTEPE", veiculo.checklist_item_2),
-            ("FERRAM.", veiculo.checklist_item_3),
-            ("TRIÂNGULO", veiculo.checklist_item_4),
-            ("DOCUMENTO", veiculo.checklist_item_5),
-            ("EXTINTOR", veiculo.checklist_item_6),
-            ("CALOTAS", veiculo.checklist_item_7),
-            ("TAPETES", veiculo.checklist_item_8),
-            ("TOCA-FITAS", veiculo.checklist_item_9),
-            ("CD PLAYER", veiculo.checklist_item_10),
+            ("MACACO", getattr(veiculo, 'checklist_item_1', False)),
+            ("ESTEPE", getattr(veiculo, 'checklist_item_2', False)),
+            ("FERRAM.", getattr(veiculo, 'checklist_item_3', False)),
+            ("TRIÂNGULO", getattr(veiculo, 'checklist_item_4', False)),
+            ("DOCUMENTO", getattr(veiculo, 'checklist_item_5', False)),
+            ("EXTINTOR", getattr(veiculo, 'checklist_item_6', False)),
+            ("CALOTAS", getattr(veiculo, 'checklist_item_7', False)),
+            ("TAPETES", getattr(veiculo, 'checklist_item_8', False)),
+            ("TOCA-FITAS", getattr(veiculo, 'checklist_item_9', False)),
+            ("CD PLAYER", getattr(veiculo, 'checklist_item_10', False)),
         ]
 
         y = self._draw_checklist(c, y, checklist_items)

@@ -3,7 +3,7 @@ Financial Report PDF Generation Service
 Generates comprehensive financial reports using ReportLab with data from database.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from io import BytesIO
 from typing import Optional, Dict, List, Tuple
@@ -130,8 +130,8 @@ class PDFFinanceiroService:
         # Total revenue from finalized contracts
         receita_total = db.query(Contrato).filter(
             Contrato.status == 'finalizado',
-            Contrato.data_finalizacao >= data_inicio_dt,
-            Contrato.data_finalizacao <= data_fim_dt
+            Contrato.data_fim >= data_inicio_dt,
+            Contrato.data_fim <= data_fim_dt
         ).with_entities(Contrato.valor_total).all()
 
         receita_total = sum([r[0] or Decimal('0') for r in receita_total])
@@ -148,8 +148,10 @@ class PDFFinanceiroService:
         data_fim_date = PDFFinanceiroService._parse_date(data_fim).date()
 
         for despesa in despesa_loja:
-            if despesa.data:
-                if data_inicio_date <= despesa.data.date() <= data_fim_date:
+            # DespesaLoja uses mes/ano, construct a date from those fields
+            if hasattr(despesa, 'mes') and hasattr(despesa, 'ano'):
+                despesa_date = date(despesa.ano, despesa.mes, 1)
+                if data_inicio_date <= despesa_date <= data_fim_date:
                     despesa_loja_total += despesa.valor or Decimal('0')
 
         parcela_seguro = db.query(ParcelaSeguro).filter(
@@ -193,8 +195,8 @@ class PDFFinanceiroService:
 
         contratos = db.query(Contrato).filter(
             Contrato.status == 'finalizado',
-            Contrato.data_finalizacao >= data_inicio_dt,
-            Contrato.data_finalizacao <= data_fim_dt
+            Contrato.data_fim >= data_inicio_dt,
+            Contrato.data_fim <= data_fim_dt
         ).all()
 
         dados = []
@@ -207,8 +209,8 @@ class PDFFinanceiroService:
             # Calculate days
             if contrato.qtd_diarias:
                 qtd_diarias = contrato.qtd_diarias
-            elif contrato.data_inicio and contrato.data_finalizacao:
-                qtd_diarias = (contrato.data_finalizacao.date() - contrato.data_inicio.date()).days
+            elif contrato.data_inicio and contrato.data_fim:
+                qtd_diarias = (contrato.data_fim.date() - contrato.data_inicio.date()).days
             else:
                 qtd_diarias = 0
 
@@ -217,7 +219,7 @@ class PDFFinanceiroService:
                 'cliente': cliente_nome,
                 'veiculo': veiculo_info,
                 'data_inicio': PDFFinanceiroService._format_date(contrato.data_inicio),
-                'data_finalizacao': PDFFinanceiroService._format_date(contrato.data_finalizacao),
+                'data_finalizacao': PDFFinanceiroService._format_date(contrato.data_fim),
                 'qtd_diarias': str(qtd_diarias),
                 'valor_total': contrato.valor_total or Decimal('0')
             })
@@ -289,7 +291,7 @@ class PDFFinanceiroService:
 
             dados.append({
                 'apolice': apolice,
-                'vencimento': PDFFinanceiroService._format_date(parcela.data_vencimento),
+                'vencimento': PDFFinanceiroService._format_date(parcela.vencimento),
                 'valor': parcela.valor or Decimal('0')
             })
 
@@ -338,7 +340,7 @@ class PDFFinanceiroService:
 
             dados.append({
                 'veiculo': veiculo_info,
-                'tipo': multa.tipo or "N/A",
+                'tipo': getattr(multa, 'tipo', 'Multa'),
                 'descricao': multa.descricao or "N/A",
                 'valor': multa.valor or Decimal('0'),
                 'data_pagamento': PDFFinanceiroService._format_date(multa.data_pagamento)
