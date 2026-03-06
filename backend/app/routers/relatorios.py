@@ -49,7 +49,7 @@ def get_relatorio_receitas_pdf(
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de data invalido")
 
-    pdf_buffer = PDFService.generate_relatorio_financeiro_pdf(db, data_inicio, data_fim)
+    pdf_buffer = PDFService.generate_relatorio_receitas_pdf(db, data_inicio, data_fim)
     return StreamingResponse(
         iter([pdf_buffer.getvalue()]),
         media_type="application/pdf",

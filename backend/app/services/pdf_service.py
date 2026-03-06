@@ -372,6 +372,9 @@ class PDFService:
         hora_entrada = contrato.data_fim.strftime("%H:%M") if contrato.data_fim else ""
         km_saida = "{:,.0f}".format(contrato.km_inicial) if contrato.km_inicial else ""
         km_entrada = "{:,.0f}".format(contrato.km_final) if contrato.km_final else ""
+        km_percorridos = ""
+        if contrato.km_inicial and contrato.km_final:
+            km_percorridos = "{:,.0f}".format(contrato.km_final - contrato.km_inicial)
 
         # Quilometragem fields (2 columns)
         qh = 16
@@ -380,7 +383,7 @@ class PDFService:
             ("DATA SAIDA:", data_saida, "DATA ENTRADA:", data_entrada),
             ("HORA SAIDA:", hora_saida, "HORA ENTRADA:", hora_entrada),
             ("KM SAIDA:", km_saida, "KM ENTRADA:", km_entrada),
-            ("KM LIVRES/DIA:", "", "KM PERCORRIDOS:", ""),
+            ("KM LIVRES/DIA:", "", "KM PERCORRIDOS:", km_percorridos),
         ]
         for f1l, f1v, f2l, f2v in fields_km:
             draw_field_box(rx, ry_sec, f1l, f1v, hw2, qh)
@@ -410,7 +413,8 @@ class PDFService:
         dias = ""
         if contrato.data_inicio and contrato.data_fim:
             delta = contrato.data_fim - contrato.data_inicio
-            dias = str(delta.days)
+            dias_num = delta.days if delta.days >= 1 else 1
+            dias = str(dias_num)
 
         rows = [
             ("DIARIA", dias, valor_diaria, valor_total),
@@ -776,7 +780,14 @@ class PDFService:
 
         desp_contrato = db.query(DespesaContrato).filter(DespesaContrato.data_registro >= di, DespesaContrato.data_registro <= df).all()
         desp_veiculo = db.query(DespesaVeiculo).filter(DespesaVeiculo.data >= di, DespesaVeiculo.data <= df).all()
-        desp_loja = db.query(DespesaLoja).all()
+        # Filter DespesaLoja by month/year within the date range
+        all_desp_loja = db.query(DespesaLoja).all()
+        desp_loja = [d for d in all_desp_loja if di.year <= d.ano <= df.year and (
+            (d.ano == di.year and d.ano == df.year and di.month <= d.mes <= df.month) or
+            (d.ano == di.year and d.ano < df.year and d.mes >= di.month) or
+            (d.ano > di.year and d.ano < df.year) or
+            (d.ano == df.year and d.ano > di.year and d.mes <= df.month)
+        )]
 
         total_desp_contrato = sum(float(d.valor or 0) for d in desp_contrato)
         total_desp_veiculo = sum(float(d.valor or 0) for d in desp_veiculo)
@@ -799,6 +810,7 @@ class PDFService:
             ["Despesas de Loja", "R$ {:,.2f}".format(total_desp_loja)],
             ["Total de Despesas", "R$ {:,.2f}".format(despesa_total)],
             ["Lucro Liquido", "R$ {:,.2f}".format(lucro)],
+            ["Margem de Lucro", "{:.1f}%".format((lucro / receita_total * 100) if receita_total > 0 else 0)],
         ]
         story.append(_styled_table(summary_data, col_widths=[4*inch, 3*inch]))
         story.append(Spacer(1, 20))
@@ -818,6 +830,92 @@ class PDFService:
         return buffer
 
     @staticmethod
+    def generate_relatorio_receitas_pdf(db: Session, data_inicio: str, data_fim: str) -> BytesIO:
+        """Generate revenue-only report PDF (separate from full financial report)."""
+        di = datetime.strptime(data_inicio, "%Y-%m-%d")
+        df = datetime.strptime(data_fim, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        empresa_info = _get_empresa_info(db)
+
+        contratos = db.query(Contrato).filter(Contrato.data_criacao >= di, Contrato.data_criacao <= df).all()
+        receita_total = sum(float(c.valor_total or 0) for c in contratos)
+        ativos = sum(1 for c in contratos if c.status == "ativo")
+        finalizados = sum(1 for c in contratos if c.status == "finalizado")
+        receita_ativos = sum(float(c.valor_total or 0) for c in contratos if c.status == "ativo")
+        receita_finalizados = sum(float(c.valor_total or 0) for c in contratos if c.status == "finalizado")
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*cm, bottomMargin=1*cm, leftMargin=1.5*cm, rightMargin=1.5*cm)
+        story = []
+        styles = getSampleStyleSheet()
+        sec_style = ParagraphStyle("S", parent=styles["Heading2"], fontSize=13, textColor=SUCCESS, spaceAfter=8)
+
+        _add_header(story, styles, "RELATORIO DE RECEITAS", "Periodo: {} a {}".format(di.strftime("%d/%m/%Y"), df.strftime("%d/%m/%Y")), empresa_info)
+
+        # Summary
+        summary_data = [
+            ["Metrica", "Valor"],
+            ["Total de Contratos", str(len(contratos))],
+            ["Contratos Ativos", str(ativos)],
+            ["Contratos Finalizados", str(finalizados)],
+            ["Receita Contratos Ativos", "R$ {:,.2f}".format(receita_ativos)],
+            ["Receita Contratos Finalizados", "R$ {:,.2f}".format(receita_finalizados)],
+            ["Receita Total", "R$ {:,.2f}".format(receita_total)],
+        ]
+        story.append(_styled_table(summary_data, col_widths=[4*inch, 3*inch]))
+        story.append(Spacer(1, 20))
+
+        # Detail by contract
+        if contratos:
+            story.append(Paragraph("<b>DETALHAMENTO POR CONTRATO</b>", sec_style))
+            rev_rows = [["Contrato", "Cliente", "Veiculo", "Diarias", "Valor Diaria", "Valor Total", "Status"]]
+            for c in contratos:
+                cliente = db.query(Cliente).filter(Cliente.id == c.cliente_id).first()
+                veiculo = db.query(Veiculo).filter(Veiculo.id == c.veiculo_id).first()
+                dias = 0
+                if c.data_inicio and c.data_fim:
+                    dias = (c.data_fim - c.data_inicio).days
+                    if dias < 1:
+                        dias = 1
+                rev_rows.append([
+                    c.numero,
+                    (cliente.nome[:18] + "..") if cliente and len(cliente.nome) > 20 else (cliente.nome if cliente else "N/A"),
+                    veiculo.placa if veiculo else "N/A",
+                    str(dias),
+                    "R$ {:,.2f}".format(float(c.valor_diaria or 0)),
+                    "R$ {:,.2f}".format(float(c.valor_total or 0)),
+                    c.status,
+                ])
+            story.append(_styled_table(rev_rows, col_widths=[1.8*cm, 3*cm, 2*cm, 1.5*cm, 2.2*cm, 2.5*cm, 2*cm]))
+
+            # Receita calculada vs registrada
+            story.append(Spacer(1, 16))
+            story.append(Paragraph("<b>VERIFICACAO DE VALORES</b>", sec_style))
+            check_rows = [["Contrato", "Dias x Diaria (Calculado)", "Valor Total (Registrado)", "Diferenca"]]
+            for c in contratos:
+                dias = 0
+                if c.data_inicio and c.data_fim:
+                    dias = (c.data_fim - c.data_inicio).days
+                    if dias < 1:
+                        dias = 1
+                calculado = dias * float(c.valor_diaria or 0)
+                registrado = float(c.valor_total or 0)
+                diff = registrado - calculado
+                check_rows.append([
+                    c.numero,
+                    "R$ {:,.2f}".format(calculado),
+                    "R$ {:,.2f}".format(registrado),
+                    "R$ {:,.2f}".format(diff) if abs(diff) > 0.01 else "OK",
+                ])
+            story.append(_styled_table(check_rows, col_widths=[3*cm, 4.5*cm, 4.5*cm, 3*cm]))
+        else:
+            story.append(Paragraph("Nenhuma receita encontrada no periodo.", styles["Normal"]))
+
+        _add_footer(story, styles)
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
     def generate_relatorio_despesas_pdf(db: Session, data_inicio: str, data_fim: str) -> BytesIO:
         """Generate expenses report PDF."""
         di = datetime.strptime(data_inicio, "%Y-%m-%d")
@@ -826,7 +924,14 @@ class PDFService:
 
         desp_contrato = db.query(DespesaContrato).filter(DespesaContrato.data_registro >= di, DespesaContrato.data_registro <= df).all()
         desp_veiculo = db.query(DespesaVeiculo).filter(DespesaVeiculo.data >= di, DespesaVeiculo.data <= df).all()
-        desp_loja = db.query(DespesaLoja).all()
+        # Filter DespesaLoja by month/year within the date range
+        all_desp_loja = db.query(DespesaLoja).all()
+        desp_loja = [d for d in all_desp_loja if di.year <= d.ano <= df.year and (
+            (d.ano == di.year and d.ano == df.year and di.month <= d.mes <= df.month) or
+            (d.ano == di.year and d.ano < df.year and d.mes >= di.month) or
+            (d.ano > di.year and d.ano < df.year) or
+            (d.ano == df.year and d.ano > di.year and d.mes <= df.month)
+        )]
 
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*cm, bottomMargin=1*cm)
