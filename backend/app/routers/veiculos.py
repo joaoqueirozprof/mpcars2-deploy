@@ -11,7 +11,12 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.pagination import paginate
 from app.models.user import User
-from app.models import Veiculo, DespesaVeiculo, Contrato
+from app.models import (
+    Veiculo, DespesaVeiculo, Contrato, DespesaOperacional,
+    Seguro, ParcelaSeguro, IpvaRegistro, Reserva, Multa, Manutencao,
+    UsoVeiculoEmpresa, RelatorioNF, DespesaNF, Quilometragem,
+    DespesaContrato, ProrrogacaoContrato, CheckinCheckout,
+)
 
 
 UPLOAD_DIR = "/app/uploads/veiculos"
@@ -362,7 +367,7 @@ def delete_veiculo(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a vehicle."""
+    """Delete a vehicle and all related records."""
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
@@ -375,5 +380,45 @@ def delete_veiculo(
         if os.path.exists(file_path):
             os.remove(file_path)
 
+    # Delete all dependent records (order matters due to FK chains)
+    # First: get all contratos for this vehicle (they have their own dependents)
+    contratos = db.query(Contrato).filter(Contrato.veiculo_id == veiculo_id).all()
+    contrato_ids = [c.id for c in contratos]
+
+    if contrato_ids:
+        # Delete contrato dependents
+        db.query(Quilometragem).filter(Quilometragem.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(DespesaContrato).filter(DespesaContrato.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(ProrrogacaoContrato).filter(ProrrogacaoContrato.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(CheckinCheckout).filter(CheckinCheckout.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        # Delete contratos
+        db.query(Contrato).filter(Contrato.veiculo_id == veiculo_id).delete(synchronize_session=False)
+
+    # Delete seguro dependents first, then seguros
+    seguros = db.query(Seguro).filter(Seguro.veiculo_id == veiculo_id).all()
+    seguro_ids = [s.id for s in seguros]
+    if seguro_ids:
+        db.query(ParcelaSeguro).filter(ParcelaSeguro.seguro_id.in_(seguro_ids)).delete(synchronize_session=False)
+
+    # Delete uso_veiculo_empresa dependents
+    usos = db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.veiculo_id == veiculo_id).all()
+    uso_ids = [u.id for u in usos]
+    if uso_ids:
+        db.query(RelatorioNF).filter(RelatorioNF.uso_id.in_(uso_ids)).delete(synchronize_session=False)
+
+    # Delete all direct vehicle dependents
+    db.query(DespesaVeiculo).filter(DespesaVeiculo.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(DespesaOperacional).filter(DespesaOperacional.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(Seguro).filter(Seguro.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(ParcelaSeguro).filter(ParcelaSeguro.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(IpvaRegistro).filter(IpvaRegistro.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(Reserva).filter(Reserva.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(Multa).filter(Multa.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(Manutencao).filter(Manutencao.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(DespesaNF).filter(DespesaNF.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(RelatorioNF).filter(RelatorioNF.veiculo_id == veiculo_id).delete(synchronize_session=False)
+    db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.veiculo_id == veiculo_id).delete(synchronize_session=False)
+
+    # Finally delete the vehicle
     db.delete(veiculo)
     db.commit()
