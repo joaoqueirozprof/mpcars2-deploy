@@ -80,6 +80,13 @@ def startup():
                 conn.execute(text("ALTER TABLE veiculos ADD COLUMN foto_url VARCHAR"))
                 conn.commit()
 
+    # Run reports specification migration (add missing columns)
+    try:
+        from add_columns_migration import run_migration
+        run_migration()
+    except Exception as e:
+        print(f"Migration note: {e}")
+
     from app.services.seed import seed_database
     from app.core.database import SessionLocal
 
