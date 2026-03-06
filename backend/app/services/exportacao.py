@@ -174,9 +174,9 @@ class ExportacaoService:
         query = db.query(Cliente)
 
         if data_inicio:
-            query = query.filter(Cliente.data_criacao >= data_inicio)
+            query = query.filter(Cliente.data_cadastro >= data_inicio)
         if data_fim:
-            query = query.filter(Cliente.data_criacao <= data_fim)
+            query = query.filter(Cliente.data_cadastro <= data_fim)
 
         clientes = query.all()
 
@@ -225,7 +225,7 @@ class ExportacaoService:
                 cliente.cidade_residencial or "",
                 cliente.estado_residencial or "",
                 cliente.score or "",
-                ExportacaoService._format_date(cliente.data_criacao),
+                ExportacaoService._format_date(cliente.data_cadastro),
                 int(total_contratos),
                 ExportacaoService._format_currency(valor_total),
             ]
@@ -317,7 +317,7 @@ class ExportacaoService:
                 veiculo.modelo or "",
                 veiculo.ano or "",
                 veiculo.cor or "",
-                veiculo.quilometragem or 0,
+                veiculo.km_atual or 0,
                 veiculo.status or "",
                 getattr(veiculo, "categoria", "") or "",
                 ExportacaoService._format_currency(valor_diaria),

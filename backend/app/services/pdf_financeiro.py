@@ -657,11 +657,11 @@ class PDFFinanceiroService:
         despesas_multas = PDFFinanceiroService._get_despesas_multas(db, data_inicio, data_fim)
 
         totais = {
-            'Veículos': sum([d['valor'] for d in despesas_veiculo]),
-            'Loja': sum([d['valor'] for d in despesas_loja]),
-            'Seguros': sum([d['valor'] for d in despesas_seguros]),
-            'IPVA': sum([d['valor'] for d in despesas_ipva]),
-            'Multas': sum([d['valor'] for d in despesas_multas])
+            'Veículos': sum([d['valor'] for d in despesas_veiculo], Decimal('0')),
+            'Loja': sum([d['valor'] for d in despesas_loja], Decimal('0')),
+            'Seguros': sum([d['valor'] for d in despesas_seguros], Decimal('0')),
+            'IPVA': sum([d['valor'] for d in despesas_ipva], Decimal('0')),
+            'Multas': sum([d['valor'] for d in despesas_multas], Decimal('0'))
         }
 
         total_despesas = sum(totais.values())
@@ -681,10 +681,10 @@ class PDFFinanceiroService:
 
         from reportlab.platypus import Spacer as TableSpacer
         for categoria, valor in totais.items():
-            percentual = (valor / total_despesas * 100) if total_despesas > 0 else 0
+            percentual = float(valor / total_despesas * 100) if total_despesas > 0 else 0.0
 
             # Create visual bar
-            bar_width = percentual / 100 * 3 * cm
+            bar_width = max(0.01 * cm, percentual / 100.0 * 3 * cm)
             bar_table = Table([[Spacer(bar_width, 0.3 * cm)]])
             bar_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (0, 0), PDFFinanceiroService.COLOR_PRIMARY),
