@@ -1,13 +1,24 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
+import api from '@/services/api'
 import toast from 'react-hot-toast'
 import { Settings, Building2, User, Sliders } from 'lucide-react'
 
 const Configuracoes: React.FC = () => {
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'empresa' | 'usuario' | 'sistema'>('empresa')
   const [isSaving, setIsSaving] = useState(false)
+
+  const { data: configs } = useQuery({
+    queryKey: ['configuracoes'],
+    queryFn: async () => {
+      const { data } = await api.get('/configuracoes/')
+      return data
+    },
+  })
 
   const [empresaForm, setEmpresaForm] = useState({
     nome: 'MPCARS Brasil',
@@ -38,10 +49,40 @@ const Configuracoes: React.FC = () => {
     taxa_juros: 2,
   })
 
+  useEffect(() => {
+    if (configs && Array.isArray(configs)) {
+      const configMap: Record<string, string> = {}
+      configs.forEach((c: any) => { configMap[c.chave] = c.valor })
+      setEmpresaForm({
+        nome: configMap['empresa_nome'] || 'MPCARS Brasil',
+        cnpj: configMap['empresa_cnpj'] || '',
+        telefone: configMap['empresa_telefone'] || '',
+        email: configMap['empresa_email'] || '',
+        endereco: configMap['empresa_endereco'] || '',
+        cidade: configMap['empresa_cidade'] || '',
+        estado: configMap['empresa_estado'] || '',
+        cep: configMap['empresa_cep'] || '',
+      })
+      setSystemForm({
+        idioma: configMap['sistema_idioma'] || 'pt-BR',
+        tema: configMap['sistema_tema'] || 'light',
+        notificacoes_email: configMap['sistema_notificacoes_email'] === 'true',
+        notificacoes_sms: configMap['sistema_notificacoes_sms'] === 'true',
+        valor_diaria_padrao: parseFloat(configMap['sistema_valor_diaria_padrao'] || '150'),
+        taxa_juros: parseFloat(configMap['sistema_taxa_juros'] || '2'),
+      })
+    }
+  }, [configs])
+
   const handleSaveEmpresa = async () => {
     setIsSaving(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const items = Object.entries(empresaForm).map(([key, valor]) => ({
+        chave: `empresa_${key}`,
+        valor: String(valor),
+      }))
+      await api.put('/configuracoes/batch/update', { items })
+      queryClient.invalidateQueries({ queryKey: ['configuracoes'] })
       toast.success('Configurações da empresa salvas com sucesso!')
     } catch (error) {
       toast.error('Erro ao salvar configurações')
@@ -58,7 +99,9 @@ const Configuracoes: React.FC = () => {
 
     setIsSaving(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      if (userForm.senhaNova) {
+        toast.info('Alteração de senha requer implementação de backend')
+      }
       toast.success('Dados do usuário atualizados com sucesso!')
       setUserForm({ ...userForm, senhaAtual: '', senhaNova: '', confirmarSenha: '' })
     } catch (error) {
@@ -71,7 +114,16 @@ const Configuracoes: React.FC = () => {
   const handleSaveSystem = async () => {
     setIsSaving(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const items = [
+        { chave: 'sistema_idioma', valor: systemForm.idioma },
+        { chave: 'sistema_tema', valor: systemForm.tema },
+        { chave: 'sistema_notificacoes_email', valor: String(systemForm.notificacoes_email) },
+        { chave: 'sistema_notificacoes_sms', valor: String(systemForm.notificacoes_sms) },
+        { chave: 'sistema_valor_diaria_padrao', valor: String(systemForm.valor_diaria_padrao) },
+        { chave: 'sistema_taxa_juros', valor: String(systemForm.taxa_juros) },
+      ]
+      await api.put('/configuracoes/batch/update', { items })
+      queryClient.invalidateQueries({ queryKey: ['configuracoes'] })
       toast.success('Configurações do sistema salvas com sucesso!')
     } catch (error) {
       toast.error('Erro ao salvar configurações')

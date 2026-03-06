@@ -64,7 +64,7 @@ const Ipva: React.FC = () => {
   })
 
   const createMutation = useMutation({
-    mutationFn: (formData: any) => api.post('/ipva', formData),
+    mutationFn: (formData: any) => api.post('/ipva/registros', formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ipva'] })
       setIsModalOpen(false)
@@ -77,7 +77,7 @@ const Ipva: React.FC = () => {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (formData: any) => api.patch(`/ipva/${editingIPVA?.id}`, formData),
+    mutationFn: (formData: any) => api.put(`/ipva/registros/${editingIPVA?.id}`, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ipva'] })
       setIsModalOpen(false)
@@ -90,7 +90,7 @@ const Ipva: React.FC = () => {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/ipva/${id}`),
+    mutationFn: (id: string) => api.delete(`/ipva/registros/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ipva'] })
       setDeleteConfirm({ isOpen: false })

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional, List
@@ -54,7 +54,7 @@ def list_manutencoes(
     page: int = 1,
     limit: int = 50,
     search: Optional[str] = None,
-    status_filter: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     tipo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

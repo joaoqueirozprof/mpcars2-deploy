@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -12,6 +12,7 @@ from app.models import (
     DespesaContrato,
     DespesaVeiculo,
     DespesaLoja,
+    Cliente,
 )
 from app.services.pdf_service import PDFService
 from app.services.export_service import ExportService
@@ -40,6 +41,102 @@ class DespesaLojaCreate(BaseModel):
     ano: int
     descricao: str
     valor: float
+
+
+@router.get("/")
+def list_financeiro(
+    page: int = 1,
+    limit: int = 50,
+    tipo: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get paginated financial records (consolidated view)."""
+    records = []
+
+    # Add Contratos as receitas
+    contratos = db.query(Contrato).all()
+    for c in contratos:
+        cliente = db.query(Cliente).filter(Cliente.id == c.cliente_id).first() if c.cliente_id else None
+        cliente_nome = cliente.nome if cliente else "Desconhecido"
+        record = {
+            "id": f"c-{c.id}",
+            "data": c.data_criacao,
+            "tipo": "receita",
+            "categoria": "Locação",
+            "descricao": f"Contrato #{c.numero} - {cliente_nome}",
+            "valor": float(c.valor_total) if c.valor_total else 0.0,
+            "status": "pago" if c.status == "finalizado" else "pendente",
+        }
+        records.append(record)
+
+    # Add DespesaContrato as despesas
+    despesas_contrato = db.query(DespesaContrato).all()
+    for d in despesas_contrato:
+        record = {
+            "id": f"dc-{d.id}",
+            "data": d.data_criacao if hasattr(d, 'data_criacao') else datetime.now(),
+            "tipo": "despesa",
+            "categoria": d.tipo if hasattr(d, 'tipo') else "Contrato",
+            "descricao": d.descricao,
+            "valor": float(d.valor) if d.valor else 0.0,
+            "status": "pago",
+        }
+        records.append(record)
+
+    # Add DespesaVeiculo as despesas
+    despesas_veiculo = db.query(DespesaVeiculo).all()
+    for d in despesas_veiculo:
+        record = {
+            "id": f"dv-{d.id}",
+            "data": d.data_criacao if hasattr(d, 'data_criacao') else datetime.now(),
+            "tipo": "despesa",
+            "categoria": "Veículo",
+            "descricao": d.descricao,
+            "valor": float(d.valor) if d.valor else 0.0,
+            "status": "pago",
+        }
+        records.append(record)
+
+    # Add DespesaLoja as despesas
+    despesas_loja = db.query(DespesaLoja).all()
+    for d in despesas_loja:
+        record = {
+            "id": f"dl-{d.id}",
+            "data": d.data_criacao if hasattr(d, 'data_criacao') else datetime.now(),
+            "tipo": "despesa",
+            "categoria": "Loja",
+            "descricao": d.descricao,
+            "valor": float(d.valor) if d.valor else 0.0,
+            "status": "pago",
+        }
+        records.append(record)
+
+    # Filter by tipo
+    if tipo:
+        records = [r for r in records if r["tipo"] == tipo]
+
+    # Filter by status
+    if status:
+        records = [r for r in records if r["status"] == status]
+
+    # Sort by data descending
+    records.sort(key=lambda x: x["data"], reverse=True)
+
+    # Paginate
+    total = len(records)
+    start = (page - 1) * limit
+    end = start + limit
+    paginated = records[start:end]
+
+    return {
+        "data": paginated,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit,
+    }
 
 
 @router.get("/resumo")
@@ -156,14 +253,13 @@ def get_faturamento(
     if mes and ano:
         from sqlalchemy import and_
 
-        query = query.filter(
-            and_(
-                Contrato.data_criacao >= datetime(ano, mes, 1),
-                Contrato.data_criacao < datetime(ano, mes + 1, 1)
-                if mes < 12
-                else datetime(ano + 1, 1, 1),
-            )
-        )
+        start = datetime(ano, mes, 1)
+        if mes == 12:
+            end = datetime(ano + 1, 1, 1)
+        else:
+            end = datetime(ano, mes + 1, 1)
+
+        query = query.filter(and_(Contrato.data_criacao >= start, Contrato.data_criacao < end))
 
     contratos = query.all()
     total = sum(float(c.valor_total) for c in contratos if c.valor_total)
@@ -208,10 +304,10 @@ def exportar_contratos_xlsx(
 ):
     """Export contracts to XLSX."""
     buffer = ExportService.export_contratos_xlsx(db)
-    return FileResponse(
+    return StreamingResponse(
         iter([buffer.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="contratos.xlsx",
+        headers={"Content-Disposition": "attachment; filename=contratos.xlsx"},
     )
 
 
@@ -238,8 +334,8 @@ def get_relatorio_pdf(
 ):
     """Generate financial report PDF."""
     pdf_buffer = PDFService.generate_relatorio_financeiro_pdf(db, data_inicio, data_fim)
-    return FileResponse(
+    return StreamingResponse(
         iter([pdf_buffer.getvalue()]),
         media_type="application/pdf",
-        filename=f"relatorio_financeiro_{data_inicio}_{data_fim}.pdf",
+        headers={"Content-Disposition": f"attachment; filename=relatorio_financeiro_{data_inicio}_{data_fim}.pdf"},
     )
