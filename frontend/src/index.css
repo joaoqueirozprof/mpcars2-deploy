@@ -96,6 +96,30 @@ h1, h2, h3, h4, h5, h6 {
   @apply animate-pulse bg-slate-200 rounded;
 }
 
+/* Dropdown animations */
+.animate-in {
+  animation: animateIn 0.2s ease-out;
+}
+
+@keyframes animateIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
