@@ -17,6 +17,7 @@ import Manutencoes from '@/pages/Manutencoes'
 import Reservas from '@/pages/Reservas'
 import Relatorios from '@/pages/Relatorios'
 import Configuracoes from '@/pages/Configuracoes'
+import DespesasLoja from '@/pages/DespesasLoja'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/manutencoes" element={<ProtectedRoute><Manutencoes /></ProtectedRoute>} />
       <Route path="/reservas" element={<ProtectedRoute><Reservas /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Relatorios /></ProtectedRoute>} />
+      <Route path="/despesas-loja" element={<ProtectedRoute><DespesasLoja /></ProtectedRoute>} />
       <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
       <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />

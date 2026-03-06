@@ -46,6 +46,7 @@ from app.routers import (
     reservas,
     relatorios,
     ipva,
+    despesas_loja,
 )
 
 app = FastAPI(
@@ -118,6 +119,7 @@ app.include_router(manutencoes.router, prefix=settings.API_V1_PREFIX, tags=["Man
 app.include_router(reservas.router, prefix=settings.API_V1_PREFIX, tags=["Reservas"])
 app.include_router(relatorios.router, prefix=settings.API_V1_PREFIX, tags=["Relatórios"])
 app.include_router(ipva.router, prefix=settings.API_V1_PREFIX, tags=["IPVA"])
+app.include_router(despesas_loja.router, prefix=settings.API_V1_PREFIX, tags=["Despesas Loja"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -254,7 +254,7 @@ class PDFFinanceiroService:
 
     @staticmethod
     def _get_despesas_loja(db, data_inicio: str, data_fim: str) -> List:
-        """Get shop expenses filtered by date range."""
+        """Get shop expenses filtered by date range using mes/ano fields."""
         data_inicio_date = PDFFinanceiroService._parse_date(data_inicio).date()
         data_fim_date = PDFFinanceiroService._parse_date(data_fim).date()
 
@@ -262,13 +262,16 @@ class PDFFinanceiroService:
 
         dados = []
         for despesa in despesas:
-            if despesa.data and data_inicio_date <= despesa.data.date() <= data_fim_date:
-                dados.append({
-                    'categoria': despesa.categoria or "N/A",
-                    'descricao': despesa.descricao or "N/A",
-                    'data': PDFFinanceiroService._format_date(despesa.data),
-                    'valor': despesa.valor or Decimal('0')
-                })
+            # Use mes/ano fields for filtering (consistent with _get_resumo_consolidado)
+            if hasattr(despesa, 'mes') and hasattr(despesa, 'ano') and despesa.mes and despesa.ano:
+                despesa_date = date(despesa.ano, despesa.mes, 1)
+                if data_inicio_date <= despesa_date <= data_fim_date:
+                    dados.append({
+                        'categoria': despesa.categoria or "N/A",
+                        'descricao': despesa.descricao or "N/A",
+                        'data': f"{despesa.mes:02d}/{despesa.ano}",
+                        'valor': despesa.valor or Decimal('0')
+                    })
 
         return dados
 

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   LayoutDashboard, Users, Car, FileText, Building2, DollarSign,
-  ShieldAlert, FileCheck, AlertCircle, Wrench, Calendar, BarChart3, Settings
+  ShieldAlert, FileCheck, AlertCircle, Wrench, Calendar, BarChart3, Settings, Store
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSidebar } from '@/contexts/SidebarContext'
@@ -26,6 +26,7 @@ const Sidebar: React.FC = () => {
     { icon: AlertCircle, label: 'Multas', href: '/multas' },
     { icon: Wrench, label: 'Manutencoes', href: '/manutencoes' },
     { icon: Calendar, label: 'Reservas', href: '/reservas' },
+    { icon: Store, label: 'Despesas Loja', href: '/despesas-loja' },
     { icon: BarChart3, label: 'Relatorios', href: '/relatorios' },
     { icon: Settings, label: 'Configuracoes', href: '/configuracoes' },
   ]
