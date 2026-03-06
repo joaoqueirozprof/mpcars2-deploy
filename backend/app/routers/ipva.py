@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.pagination import paginate
 from app.models.user import User
-from app.models import IpvaAliquota, IpvaRegistro, Veiculo
+from app.models import IpvaAliquota, IpvaRegistro, IpvaParcela, Veiculo
 
 
 router = APIRouter(prefix="/ipva", tags=["IPVA"])
@@ -41,7 +41,7 @@ class IpvaRegistroBase(BaseModel):
 
 
 class IpvaRegistroCreate(IpvaRegistroBase):
-    pass
+    qtd_parcelas: Optional[int] = 1
 
 
 class IpvaRegistroUpdate(BaseModel):
@@ -52,6 +52,18 @@ class IpvaRegistroUpdate(BaseModel):
 class IpvaRegistroResponse(IpvaRegistroBase):
     id: int
     valor_pago: Optional[float] = None
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class IpvaParcelaResponse(BaseModel):
+    id: int
+    numero_parcela: int
+    valor: float
+    vencimento: date
+    data_pagamento: Optional[date] = None
     status: str
 
     class Config:
@@ -168,10 +180,27 @@ def create_registro(
             status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
         )
 
-    db_registro = IpvaRegistro(**registro.model_dump())
+    db_registro = IpvaRegistro(**registro.model_dump(exclude={'qtd_parcelas'}))
     db.add(db_registro)
     db.commit()
     db.refresh(db_registro)
+
+    # Create installments
+    qtd = registro.qtd_parcelas if registro.qtd_parcelas and registro.qtd_parcelas > 0 else 1
+    valor_parcela = registro.valor_ipva / qtd
+
+    for i in range(1, qtd + 1):
+        vencimento = registro.data_vencimento + timedelta(days=30 * (i - 1))
+        parcela = IpvaParcela(
+            ipva_id=db_registro.id,
+            veiculo_id=registro.veiculo_id,
+            numero_parcela=i,
+            valor=valor_parcela,
+            vencimento=vencimento,
+        )
+        db.add(parcela)
+
+    db.commit()
     return db_registro
 
 
@@ -313,6 +342,43 @@ def get_resumo_ipva(
     }
 
 
+@router.get("/registros/{registro_id}/parcelas", response_model=List[IpvaParcelaResponse])
+def get_ipva_parcelas(
+    registro_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get installments for an IPVA record."""
+    registro = db.query(IpvaRegistro).filter(IpvaRegistro.id == registro_id).first()
+    if not registro:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Registro IPVA não encontrado"
+        )
+    parcelas = db.query(IpvaParcela).filter(
+        IpvaParcela.ipva_id == registro_id
+    ).order_by(IpvaParcela.numero_parcela).all()
+    return parcelas
+
+
+@router.post("/parcelas/{parcela_id}/pagar")
+def pagar_parcela_ipva(
+    parcela_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark an IPVA installment as paid."""
+    parcela = db.query(IpvaParcela).filter(IpvaParcela.id == parcela_id).first()
+    if not parcela:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Parcela não encontrada"
+        )
+    parcela.status = "pago"
+    parcela.data_pagamento = datetime.now().date()
+    db.commit()
+    db.refresh(parcela)
+    return parcela
+
+
 @router.delete("/registros/{registro_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_registro(
     registro_id: int,
@@ -325,5 +391,6 @@ def delete_registro(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Registro IPVA não encontrado"
         )
+    db.query(IpvaParcela).filter(IpvaParcela.ipva_id == registro_id).delete(synchronize_session=False)
     db.delete(registro)
     db.commit()

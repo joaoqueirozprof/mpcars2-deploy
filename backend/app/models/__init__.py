@@ -283,7 +283,22 @@ class IpvaRegistro(Base):
     data_pagamento = Column(Date)
     status = Column(String, default="pendente")
     data_criacao = Column(DateTime, server_default=func.now())
+    qtd_parcelas = Column(Integer)
     veiculo = relationship("Veiculo", foreign_keys=[veiculo_id], lazy="select")
+
+
+class IpvaParcela(Base):
+    __tablename__ = "ipva_parcela"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ipva_id = Column(Integer, ForeignKey("ipva_registro.id"), nullable=False)
+    veiculo_id = Column(Integer, ForeignKey("veiculos.id"), nullable=False)
+    numero_parcela = Column(Integer)
+    valor = Column(Numeric(10, 2))
+    vencimento = Column(Date)
+    data_pagamento = Column(Date)
+    status = Column(String, default="pendente")
+    ipva = relationship("IpvaRegistro", foreign_keys=[ipva_id], lazy="select")
 
 
 class Reserva(Base):
@@ -322,6 +337,8 @@ class Multa(Base):
     contrato_id = Column(Integer, ForeignKey("contratos.id"))
     cliente_id = Column(Integer, ForeignKey("clientes.id"))
     data_infracao = Column(Date)
+    numero_infracao = Column(String)
+    data_vencimento = Column(Date)
     valor = Column(Numeric(10, 2))
     pontos = Column(Integer)
     gravidade = Column(String)

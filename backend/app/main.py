@@ -18,6 +18,7 @@ from app.models import (  # noqa - Import all models
     ParcelaSeguro,
     IpvaAliquota,
     IpvaRegistro,
+    IpvaParcela,
     Reserva,
     CheckinCheckout,
     Multa,
@@ -79,6 +80,21 @@ def startup():
             columns = [c["name"] for c in inspector.get_columns("veiculos")]
             if "foto_url" not in columns:
                 conn.execute(text("ALTER TABLE veiculos ADD COLUMN foto_url VARCHAR"))
+                conn.commit()
+        # Add missing columns to multas
+        if "multas" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("multas")]
+            if "numero_infracao" not in columns:
+                conn.execute(text("ALTER TABLE multas ADD COLUMN numero_infracao VARCHAR"))
+                conn.commit()
+            if "data_vencimento" not in columns:
+                conn.execute(text("ALTER TABLE multas ADD COLUMN data_vencimento DATE"))
+                conn.commit()
+        # Add qtd_parcelas to ipva_registro
+        if "ipva_registro" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("ipva_registro")]
+            if "qtd_parcelas" not in columns:
+                conn.execute(text("ALTER TABLE ipva_registro ADD COLUMN qtd_parcelas INTEGER"))
                 conn.commit()
 
     # Run reports specification migration (add missing columns)

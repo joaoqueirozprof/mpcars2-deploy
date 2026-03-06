@@ -15,13 +15,13 @@ router = APIRouter(prefix="/multas", tags=["Multas"])
 
 class MultaBase(BaseModel):
     veiculo_id: int
-    contrato_id: Optional[int] = None
-    cliente_id: Optional[int] = None
-    data_infracao: date
+    numero_infracao: Optional[str] = None
+    data_infracao: Optional[date] = None
     valor: float
-    pontos: int
-    gravidade: str
-    responsavel: Optional[str] = None
+    data_vencimento: Optional[date] = None
+    data_pagamento: Optional[date] = None
+    status: Optional[str] = "pendente"
+    descricao: Optional[str] = None
 
 
 class MultaCreate(MultaBase):
@@ -29,14 +29,25 @@ class MultaCreate(MultaBase):
 
 
 class MultaUpdate(BaseModel):
+    numero_infracao: Optional[str] = None
+    data_infracao: Optional[date] = None
     valor: Optional[float] = None
+    data_vencimento: Optional[date] = None
+    data_pagamento: Optional[date] = None
     status: Optional[str] = None
-    responsavel: Optional[str] = None
+    descricao: Optional[str] = None
 
 
-class MultaResponse(MultaBase):
+class MultaResponse(BaseModel):
     id: int
-    status: str
+    veiculo_id: int
+    numero_infracao: Optional[str] = None
+    data_infracao: Optional[date] = None
+    valor: Optional[float] = None
+    data_vencimento: Optional[date] = None
+    data_pagamento: Optional[date] = None
+    status: str = "pendente"
+    descricao: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -135,7 +146,7 @@ def get_multa(
     return multa
 
 
-@router.put("/{multa_id}", response_model=MultaResponse)
+@router.patch("/{multa_id}", response_model=MultaResponse)
 def update_multa(
     multa_id: int,
     multa_data: MultaUpdate,
