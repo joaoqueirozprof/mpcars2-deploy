@@ -171,12 +171,15 @@ class PDFService:
             c.setFont("Helvetica", font_size)
             c.drawString(x + label_w, y, str(value or ""))
 
-        def draw_section_title(y, title):
+        def draw_section_title(y, title, sec_x=None, sec_w=None):
+            """Draw section title box. sec_x/sec_w control position and width."""
+            sx = sec_x if sec_x is not None else margin
+            sw = sec_w if sec_w is not None else (w - 2 * margin)
             c.setFillColor(colors.HexColor("#1a1a1a"))
             c.setFont("Helvetica-Bold", 9)
             box_h = 16
-            c.rect(margin, y - box_h, w - 2 * margin, box_h, fill=0)
-            c.drawCentredString(w / 2, y - box_h + 4, title)
+            c.rect(sx, y - box_h, sw, box_h, fill=0)
+            c.drawCentredString(sx + sw / 2, y - box_h + 4, title)
             return y - box_h - 4
 
         def draw_field_box(x, y, label, value, width, height=14):
@@ -190,117 +193,150 @@ class PDFService:
             c.drawString(x + 2, y - height + 3, str(value or ""))
             return y - height
 
-        def draw_car_inspection_diagram(x, y, width=200, height=120):
-            """Draw a top-down view of a sedan car for inspection damage marking."""
+        def draw_car_side_view(x, y, car_w=140, car_h=65):
+            """Draw a SIDE VIEW of a sedan car for inspection damage marking."""
             c.saveState()
             c.setStrokeColor(colors.black)
-            c.setLineWidth(0.8)
+            c.setLineWidth(0.7)
+            c.setFillColor(colors.white)
 
-            # Title
-            c.setFont("Helvetica-Bold", 6)
-            c.setFillColor(colors.black)
-            c.drawString(x, y, "DIAGRAMA DE VISTORIA")
+            # Car dimensions relative to bounding box
+            # x, y is top-left corner of bounding area
+            # Car body sits in the middle-bottom of the area
+            body_bottom = y - car_h + 10
+            body_top = y - 18
+            body_left = x + 5
+            body_right = x + car_w - 5
+            body_w = body_right - body_left
+            body_h = body_top - body_bottom
 
-            # --- TOP-DOWN VIEW (bird's eye sedan) ---
-            cx = x + width / 2  # center x
-            cy = y - 55  # center y
-            bw = 50  # body width
-            bh = 90  # body height (length of car)
-
-            # Car body outline using path
+            # --- Main body outline (side profile of sedan) ---
             p = c.beginPath()
-            # Start bottom-center, go clockwise
-            r = 8  # corner radius
-            left = cx - bw / 2
-            right = cx + bw / 2
-            top = cy + bh / 2
-            bottom = cy - bh / 2
-
-            # Rounded rectangle for body
-            p.moveTo(left + r, bottom)
-            p.lineTo(right - r, bottom)
-            p.arcTo(right - 2 * r, bottom, right, bottom + 2 * r, -90, 90)
-            p.lineTo(right, top - r)
-            p.arcTo(right - 2 * r, top - 2 * r, right, top, 0, 90)
-            p.lineTo(left + r, top)
-            p.arcTo(left, top - 2 * r, left + 2 * r, top, 90, 90)
-            p.lineTo(left, bottom + r)
-            p.arcTo(left, bottom, left + 2 * r, bottom + 2 * r, 180, 90)
+            # Start at bottom-left of body, go clockwise
+            # Bottom line (undercarriage)
+            p.moveTo(body_left + 8, body_bottom)
+            p.lineTo(body_right - 8, body_bottom)
+            # Right side (rear) - curve up
+            p.lineTo(body_right, body_bottom + 4)
+            # Rear vertical up to trunk
+            p.lineTo(body_right, body_bottom + body_h * 0.45)
+            # Trunk top
+            p.lineTo(body_right - 2, body_bottom + body_h * 0.5)
+            # Rear window slope
+            p.lineTo(body_right - body_w * 0.22, body_top)
+            # Roof line
+            p.lineTo(body_left + body_w * 0.35, body_top)
+            # Windshield slope
+            p.lineTo(body_left + body_w * 0.15, body_bottom + body_h * 0.5)
+            # Hood line
+            p.lineTo(body_left + 2, body_bottom + body_h * 0.42)
+            # Front bumper down
+            p.lineTo(body_left, body_bottom + 4)
+            p.lineTo(body_left + 8, body_bottom)
             p.close()
-
-            c.setFillColor(colors.HexColor("#f5f5f5"))
             c.drawPath(p, fill=1, stroke=1)
 
-            # Windshield (front - bottom of diagram = front of car)
+            # --- Windows ---
             c.setLineWidth(0.5)
-            ws_w = bw - 12
-            c.rect(cx - ws_w / 2, bottom + 12, ws_w, 14, fill=0)
-            c.setFont("Helvetica", 4)
-            c.setFillColor(colors.black)
-            c.drawCentredString(cx, bottom + 17, "PARA-BRISA")
+            # Front windshield
+            win_bottom = body_bottom + body_h * 0.55
+            p2 = c.beginPath()
+            p2.moveTo(body_left + body_w * 0.18, win_bottom)
+            p2.lineTo(body_left + body_w * 0.36, body_top - 2)
+            p2.lineTo(body_left + body_w * 0.38, body_top - 2)
+            p2.lineTo(body_left + body_w * 0.22, win_bottom)
+            p2.close()
+            c.drawPath(p2, fill=0, stroke=1)
 
-            # Rear window (top of diagram = rear)
-            c.rect(cx - ws_w / 2, top - 26, ws_w, 14, fill=0)
-            c.drawCentredString(cx, top - 21, "VIDRO TRAS.")
+            # Front side window
+            p3 = c.beginPath()
+            p3.moveTo(body_left + body_w * 0.24, win_bottom)
+            p3.lineTo(body_left + body_w * 0.40, body_top - 2)
+            p3.lineTo(body_left + body_w * 0.55, body_top - 2)
+            p3.lineTo(body_left + body_w * 0.55, win_bottom)
+            p3.close()
+            c.drawPath(p3, fill=0, stroke=1)
 
-            # Side windows
-            sw_h = 25
-            sw_w = 6
-            # Left side windows
-            c.rect(left + 1, cy - sw_h / 2, sw_w, sw_h, fill=0)
-            # Right side windows
-            c.rect(right - sw_w - 1, cy - sw_h / 2, sw_w, sw_h, fill=0)
+            # Rear side window
+            p4 = c.beginPath()
+            p4.moveTo(body_left + body_w * 0.57, win_bottom)
+            p4.lineTo(body_left + body_w * 0.57, body_top - 2)
+            p4.lineTo(body_left + body_w * 0.72, body_top - 2)
+            p4.lineTo(body_left + body_w * 0.75, win_bottom)
+            p4.close()
+            c.drawPath(p4, fill=0, stroke=1)
 
-            # Wheels (4 small black rectangles)
+            # Rear window (smaller, sloped)
+            p5 = c.beginPath()
+            p5.moveTo(body_left + body_w * 0.77, win_bottom)
+            p5.lineTo(body_left + body_w * 0.74, body_top - 2)
+            p5.lineTo(body_left + body_w * 0.78, body_top - 2)
+            p5.lineTo(body_right - body_w * 0.22, body_top - 1)
+            p5.lineTo(body_left + body_w * 0.80, win_bottom)
+            p5.close()
+            c.drawPath(p5, fill=0, stroke=1)
+
+            # --- Door line (vertical divider) ---
+            c.setLineWidth(0.4)
+            door_x = body_left + body_w * 0.55
+            c.line(door_x, body_bottom + 3, door_x, win_bottom)
+
+            # Door handle (small line)
+            c.setLineWidth(0.6)
+            c.line(door_x - 10, body_bottom + body_h * 0.35, door_x - 3, body_bottom + body_h * 0.35)
+            c.line(door_x + 3, body_bottom + body_h * 0.35, door_x + 10, body_bottom + body_h * 0.35)
+
+            # --- Wheels (2 circles, side view) ---
+            c.setLineWidth(0.7)
             c.setFillColor(colors.HexColor("#333333"))
-            wh = 10
-            ww = 5
-            # Front left
-            c.rect(left - ww + 1, bottom + 8, ww, wh, fill=1)
-            # Front right
-            c.rect(right - 1, bottom + 8, ww, wh, fill=1)
-            # Rear left
-            c.rect(left - ww + 1, top - 8 - wh, ww, wh, fill=1)
-            # Rear right
-            c.rect(right - 1, top - 8 - wh, ww, wh, fill=1)
+            wheel_r = body_h * 0.22
+            wheel_y = body_bottom - 1
 
-            # Center line (hood to trunk)
-            c.setStrokeColor(colors.HexColor("#cccccc"))
+            # Front wheel
+            fw_x = body_left + body_w * 0.20
+            c.circle(fw_x, wheel_y, wheel_r, fill=1)
+            c.setFillColor(colors.HexColor("#888888"))
+            c.circle(fw_x, wheel_y, wheel_r * 0.5, fill=1)
+            c.setFillColor(colors.HexColor("#333333"))
+            c.circle(fw_x, wheel_y, wheel_r * 0.2, fill=1)
+
+            # Rear wheel
+            rw_x = body_left + body_w * 0.78
+            c.setFillColor(colors.HexColor("#333333"))
+            c.circle(rw_x, wheel_y, wheel_r, fill=1)
+            c.setFillColor(colors.HexColor("#888888"))
+            c.circle(rw_x, wheel_y, wheel_r * 0.5, fill=1)
+            c.setFillColor(colors.HexColor("#333333"))
+            c.circle(rw_x, wheel_y, wheel_r * 0.2, fill=1)
+
+            # --- Headlights / taillights ---
+            c.setFillColor(colors.HexColor("#ffcc00"))
             c.setLineWidth(0.3)
-            c.setDash(2, 2)
-            c.line(cx, bottom + 28, cx, top - 28)
-            c.setDash()
+            # Front headlight
+            c.rect(body_left, body_bottom + body_h * 0.25, 4, 6, fill=1)
+            # Rear taillight
+            c.setFillColor(colors.HexColor("#cc0000"))
+            c.rect(body_right - 3, body_bottom + body_h * 0.30, 3, 5, fill=1)
 
-            # Labels
+            # --- Side mirror ---
+            c.setFillColor(colors.black)
+            c.setLineWidth(0.4)
+            mirror_x = body_left + body_w * 0.16
+            mirror_y = win_bottom + 2
+            c.rect(mirror_x - 3, mirror_y, 4, 3, fill=1)
+
+            # Labels: FRENTE and TRASEIRA
             c.setFont("Helvetica", 4)
             c.setFillColor(colors.black)
-            c.drawCentredString(cx, bottom - 4, "FRENTE")
-            c.drawCentredString(cx, top + 4, "TRASEIRA")
-            c.drawString(left - 12, cy - 2, "ESQ")
-            c.drawRightString(right + 14, cy - 2, "DIR")
-
-            # Damage marking boxes around the car
-            c.setStrokeColor(colors.HexColor("#999999"))
-            c.setLineWidth(0.3)
-            spots = [
-                (left - 6, bottom + 2, "1"),
-                (right + 2, bottom + 2, "2"),
-                (left - 6, top - 8, "3"),
-                (right + 2, top - 8, "4"),
-                (cx - 3, bottom - 8, "5"),
-                (cx - 3, top + 8, "6"),
-            ]
-            c.setFont("Helvetica", 4)
-            for sx, sy, label in spots:
-                c.rect(sx, sy, 6, 6, fill=0)
-                c.drawCentredString(sx + 3, sy + 1.5, label)
+            c.drawCentredString(body_left + 6, body_bottom - 10, "FRENTE")
+            c.drawCentredString(body_right - 6, body_bottom - 10, "TRASEIRA")
 
             c.restoreState()
-            return y - height
+            return y - car_h
 
         # --- LEFT COLUMN: LOCATARIO ---
         y = y_line - 4
-        y = draw_section_title(y, "LOCATARIO - RENTER")
+        y = draw_section_title(y, "LOCATARIO - RENTER", sec_x=lx, sec_w=col_left_w)
 
         nome_cli = cliente.nome if cliente else ""
         cpf_cnpj = cliente.cpf if cliente else ""
@@ -358,7 +394,7 @@ class PDFService:
 
         # --- IDENTIFICACAO ---
         y -= 2
-        y = draw_section_title(y, "IDENTIFICACAO - IDENTIFICATION")
+        y = draw_section_title(y, "IDENTIFICACAO - IDENTIFICATION", sec_x=lx, sec_w=col_left_w)
         y = draw_field_box(lx, y, "CPF OU CNPJ:", cpf_cnpj, lw, fh)
         y = draw_field_box(lx, y, "CARTEIRA DE HABILITACAO/NUMERO:", cnh_num, lw, fh)
         y = draw_field_box(lx, y, "EMITIDA POR:", "", lw, fh)
@@ -371,7 +407,7 @@ class PDFService:
 
         # --- CARRO ---
         y -= 2
-        y = draw_section_title(y, "CARRO - CAR")
+        y = draw_section_title(y, "CARRO - CAR", sec_x=lx, sec_w=col_left_w)
         marca_tipo = "{} {}".format(veiculo.marca, veiculo.modelo) if veiculo else ""
         placa = veiculo.placa if veiculo else ""
         yt = y
@@ -380,41 +416,64 @@ class PDFService:
 
         # --- VISTORIA ---
         y -= 2
-        y = draw_section_title(y, "VISTORIA VEICULO")
+        y = draw_section_title(y, "VISTORIA VEICULO", sec_x=lx, sec_w=col_left_w)
 
-        # Fuel gauge
+        # Fuel gauge - SAIDA
         c.setFont("Helvetica-Bold", 6)
+        c.setFillColor(colors.black)
         c.drawString(lx + 4, y - 10, "COMBUSTIVEL DE SAIDA")
         fuel_labels = ["RES.", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "CHEIO"]
         fx = lx + 4
-        fy = y - 22
+        fy = y - 20
+        fuel_spacing = (col_left_w - 10) / len(fuel_labels)
+        c.setFont("Helvetica", 4.5)
         for i, fl in enumerate(fuel_labels):
-            c.setFont("Helvetica", 5)
-            c.drawString(fx + i * 28, fy, fl)
-        c.line(lx + 4, fy - 3, lx + 4 + 28 * 9, fy - 3)
-        fy -= 6
+            c.drawString(fx + i * fuel_spacing, fy, fl)
+        c.setLineWidth(0.5)
+        c.line(fx, fy - 3, fx + fuel_spacing * len(fuel_labels), fy - 3)
+        fy -= 10
+
+        # Fuel gauge - ENTRADA
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(lx + 4, fy, "COMBUSTIVEL DE ENTRADA")
+        fy -= 10
+        c.setFont("Helvetica", 4.5)
         for i, fl in enumerate(fuel_labels):
-            c.drawString(fx + i * 28, fy, fl)
-        y = fy - 12
+            c.drawString(fx + i * fuel_spacing, fy, fl)
+        c.line(fx, fy - 3, fx + fuel_spacing * len(fuel_labels), fy - 3)
+        y = fy - 10
+
+        # --- CHECKLIST (left side) + CAR DIAGRAM (right side) ---
+        # Split the VISTORIA area: checklist on left, car on right
+        checklist_w = col_left_w * 0.38
+        car_area_x = lx + checklist_w + 4
+        car_area_w = col_left_w - checklist_w - 8
 
         # Checklist items
-        items = ["MACACO", "ESTEPE", "FERRAM.", "TRIANGULO", "DOCUMENTO", "EXTINTOR", "CALOTAS", "TOCA-FITAS", "CD PLAYER"]
-        c.setFont("Helvetica", 6)
+        items = ["MACACO", "ESTEPE", "FERRAM.", "TRIANGULO", "DOCUMENTO",
+                 "EXTINTOR", "CALOTAS", "TOCA-FITAS", "CD PLAYER"]
+        c.setFont("Helvetica", 5.5)
+        c.setFillColor(colors.black)
+        check_y = y
         for item in items:
-            c.rect(lx + 4, y - 8, 8, 8)
-            c.drawString(lx + 16, y - 7, item)
-            y -= 11
+            c.setStrokeColor(colors.black)
+            c.setLineWidth(0.4)
+            c.rect(lx + 4, check_y - 7, 7, 7)
+            c.drawString(lx + 14, check_y - 6, item)
+            check_y -= 10
 
-        # Vehicle inspection diagram
-        c.setFont("Helvetica-Bold", 7)
-        c.drawString(lx + 4, y - 6, "Vehicle Inspection Diagram:")
-        y = draw_car_inspection_diagram(lx + 4, y - 8, width=180, height=100)
+        # Car side-view diagram (to the right of checklist)
+        car_y_start = y
+        draw_car_side_view(car_area_x, car_y_start, car_w=car_area_w, car_h=90)
+
+        y = min(check_y, car_y_start - 90) - 4
 
         # Observacoes
         c.setFont("Helvetica-Bold", 6)
+        c.setFillColor(colors.black)
         obs_text = contrato.observacoes or ""
-        c.drawString(lx + 4, y - 8, "Observacoes: {}".format(obs_text[:60]))
-        y -= 30
+        c.drawString(lx + 4, y - 4, "Observacoes: {}".format(obs_text[:60]))
+        y -= 16
 
         # === RIGHT COLUMN ===
         rx = w / 2 + 4
@@ -448,11 +507,11 @@ class PDFService:
             draw_field_box(rx, ry_sec, f1l, f1v, hw2, qh)
             ry_sec = draw_field_box(rx + hw2, ry_sec, f2l, f2v, hw2, qh)
 
-        # --- QUILOMETRAGEM pricing table ---
+        # --- DISCRIMINACAO pricing table ---
         ry_sec -= 4
         c.setFont("Helvetica-Bold", 9)
         c.rect(rx, ry_sec - 16, rw, 16)
-        c.drawCentredString(rx + rw / 2, ry_sec - 12, "QUILOMETRAGEM")
+        c.drawCentredString(rx + rw / 2, ry_sec - 12, "DISCRIMINACAO")
         ry_sec -= 16
 
         # Table header
