@@ -118,7 +118,11 @@ class PDFService:
 
     @staticmethod
     def generate_contrato_pdf(db: Session, contrato_id: int) -> BytesIO:
-        """Generate professional contract PDF."""
+        """Generate contract PDF matching the MPCARS official template."""
+        from reportlab.platypus import Frame, NextPageTemplate, PageTemplate, BaseDocTemplate, FrameBreak
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas as pdfcanvas
+
         contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
         if not contrato:
             raise ValueError("Contrato nao encontrado")
@@ -129,112 +133,519 @@ class PDFService:
         if cliente and cliente.empresa_id:
             empresa = db.query(Empresa).filter(Empresa.id == cliente.empresa_id).first()
 
-        despesas = db.query(DespesaContrato).filter(DespesaContrato.contrato_id == contrato_id).all()
-        empresa_info = _get_empresa_info(db)
-
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=1*cm, bottomMargin=1*cm)
-        story = []
-        styles = getSampleStyleSheet()
+        c = pdfcanvas.Canvas(buffer, pagesize=A4)
+        w, h = A4  # 595.27 x 841.89
 
-        _add_header(story, styles, "CONTRATO DE ALUGUEL DE VEICULO", "Contrato N. {}".format(contrato.numero), empresa_info)
+        # === Fonts ===
+        c.setFont("Helvetica-Bold", 24)
 
-        # Contract info
-        sec_style = ParagraphStyle("SecTitle", parent=styles["Heading2"], fontSize=13, textColor=PRIMARY, spaceAfter=8)
-        story.append(Paragraph("<b>DADOS DO CONTRATO</b>", sec_style))
-        info_data = [
-            ["Numero:", contrato.numero],
-            ["Data de Criacao:", contrato.data_criacao.strftime("%d/%m/%Y") if contrato.data_criacao else "N/A"],
-            ["Status:", contrato.status.upper()],
-            ["Valor Diaria:", "R$ {:,.2f}".format(float(contrato.valor_diaria))],
-            ["Valor Total:", "R$ {:,.2f}".format(float(contrato.valor_total)) if contrato.valor_total else "N/A"],
+        # === PAGE 1: CONTRACT FORM ===
+        margin = 28
+        col_left_w = w / 2 - margin
+        col_right_w = w / 2 - margin
+        y_start = h - margin
+
+        # --- HEADER ---
+        # Logo text MPCARS
+        c.setFillColor(colors.HexColor("#1a1a1a"))
+        c.setFont("Helvetica-Bold", 28)
+        c.drawString(margin, y_start - 10, "MPCARS")
+        c.setFont("Helvetica", 8)
+        c.drawString(margin, y_start - 22, "VEICULOS E LOCACOES")
+
+        # Title right
+        c.setFont("Helvetica-Bold", 18)
+        c.drawRightString(w - margin, y_start - 6, "CONTRATO DE LOCACAO")
+
+        # Company info
+        c.setFont("Helvetica", 7)
+        c.drawString(margin, y_start - 36, "CNPJ.: 52.471.526/0001-53       84 99911-0504")
+        c.drawString(margin, y_start - 46, "RUA MANOEL ALEXANDRE 1048 - LJ 02 - EDIFICIO COMERCIAL E RESIDENCIAL")
+        c.drawString(margin, y_start - 54, "PRINCESINHA DO OESTE - CEP 59900-000 - PAU DOS FERROS-RN")
+
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(1)
+        y_line = y_start - 60
+        c.line(margin, y_line, w - margin, y_line)
+
+        # Helper functions
+        def draw_label_value(x, y, label, value, label_w=120, font_size=7):
+            c.setFont("Helvetica-Bold", font_size)
+            c.drawString(x, y, label)
+            c.setFont("Helvetica", font_size)
+            c.drawString(x + label_w, y, str(value or ""))
+
+        def draw_section_title(y, title):
+            c.setFillColor(colors.HexColor("#1a1a1a"))
+            c.setFont("Helvetica-Bold", 9)
+            box_h = 16
+            c.rect(margin, y - box_h, w - 2 * margin, box_h, fill=0)
+            c.drawCentredString(w / 2, y - box_h + 4, title)
+            return y - box_h - 4
+
+        def draw_field_box(x, y, label, value, width, height=14):
+            c.setStrokeColor(colors.black)
+            c.setLineWidth(0.5)
+            c.rect(x, y - height, width, height)
+            c.setFont("Helvetica-Bold", 5.5)
+            c.setFillColor(colors.black)
+            c.drawString(x + 2, y - 5, label)
+            c.setFont("Helvetica", 7)
+            c.drawString(x + 2, y - height + 3, str(value or ""))
+            return y - height
+
+        # --- LEFT COLUMN: LOCATARIO ---
+        y = y_line - 4
+        y = draw_section_title(y, "LOCATARIO - RENTER")
+
+        nome_cli = cliente.nome if cliente else ""
+        cpf_cnpj = cliente.cpf if cliente else ""
+        end_com = cliente.endereco_comercial or "" if cliente else ""
+        num_com = cliente.numero_comercial or "" if cliente else ""
+        bairro_com = ""
+        cep_com = ""
+        end_res = cliente.endereco_residencial or "" if cliente else ""
+        num_res = cliente.numero_residencial or "" if cliente else ""
+        bairro_res = ""
+        cep_res = cliente.cep_residencial or "" if cliente else ""
+        cidade = cliente.cidade_residencial or "" if cliente else ""
+        estado = cliente.estado_residencial or "" if cliente else ""
+        fones = cliente.telefone or "" if cliente else ""
+        hotel = cliente.hotel_apartamento or "" if cliente else ""
+        email = cliente.email or "" if cliente else ""
+        cnh_num = cliente.numero_cnh or "" if cliente else ""
+        cnh_cat = cliente.categoria_cnh or "" if cliente else ""
+        cnh_val = cliente.validade_cnh.strftime("%d/%m/%Y") if cliente and cliente.validade_cnh else ""
+        rg = cliente.rg or "" if cliente else ""
+
+        # Left column fields
+        lx = margin
+        lw = col_left_w
+        fh = 18  # field height
+
+        y = draw_field_box(lx, y, "NOME DO CLIENTE:", nome_cli, lw, fh)
+        y = draw_field_box(lx, y, "ENDERECO COMERCIAL:", end_com, lw, fh)
+
+        # Two cols: No + Bairro + CEP
+        hw = lw / 3
+        yt = y
+        draw_field_box(lx, yt, "No:", num_com, hw, fh)
+        draw_field_box(lx + hw, yt, "BAIRRO:", bairro_com, hw, fh)
+        y = draw_field_box(lx + 2 * hw, yt, "CEP:", cep_com, hw, fh)
+
+        y = draw_field_box(lx, y, "ENDERECO RESIDENCIAL:", end_res, lw, fh)
+        yt = y
+        draw_field_box(lx, yt, "No:", num_res, hw, fh)
+        draw_field_box(lx + hw, yt, "BAIRRO:", bairro_res, hw, fh)
+        y = draw_field_box(lx + 2 * hw, yt, "CEP:", cep_res, hw, fh)
+
+        # Cidade / Estado / Pais
+        cw = lw / 3
+        yt = y
+        draw_field_box(lx, yt, "CIDADE:", cidade, cw, fh)
+        draw_field_box(lx + cw, yt, "ESTADO:", estado, cw, fh)
+        y = draw_field_box(lx + 2 * cw, yt, "PAIS:", "Brasil", cw, fh)
+
+        y = draw_field_box(lx, y, "FONES:", fones, lw, fh)
+        yt = y
+        draw_field_box(lx, yt, "HOTEL:", hotel, lw * 0.7, fh)
+        y = draw_field_box(lx + lw * 0.7, yt, "APTo.:", "", lw * 0.3, fh)
+        y = draw_field_box(lx, y, "FONES/E-MAIL:", email, lw, fh)
+
+        # --- IDENTIFICACAO ---
+        y -= 2
+        y = draw_section_title(y, "IDENTIFICACAO - IDENTIFICATION")
+        y = draw_field_box(lx, y, "CPF OU CNPJ:", cpf_cnpj, lw, fh)
+        y = draw_field_box(lx, y, "CARTEIRA DE HABILITACAO/NUMERO:", cnh_num, lw, fh)
+        y = draw_field_box(lx, y, "EMITIDA POR:", "", lw, fh)
+        y = draw_field_box(lx, y, "No REG/CATEGORIA:", cnh_cat, lw, fh)
+        y = draw_field_box(lx, y, "DATA DA 1a HABILITACAO/VALIDADE:", cnh_val, lw, fh)
+        y = draw_field_box(lx, y, "IDENTIDADE - NUMERO:", rg, lw, fh)
+        yt = y
+        draw_field_box(lx, yt, "ORGAO EMISSOR:", "", lw * 0.6, fh)
+        y = draw_field_box(lx + lw * 0.6, yt, "DATA DE EMISSAO:", "", lw * 0.4, fh)
+
+        # --- CARRO ---
+        y -= 2
+        y = draw_section_title(y, "CARRO - CAR")
+        marca_tipo = "{} {}".format(veiculo.marca, veiculo.modelo) if veiculo else ""
+        placa = veiculo.placa if veiculo else ""
+        yt = y
+        draw_field_box(lx, yt, "MARCA/TIPO:", marca_tipo, lw * 0.6, fh)
+        y = draw_field_box(lx + lw * 0.6, yt, "PLACA:", placa, lw * 0.4, fh)
+
+        # --- VISTORIA ---
+        y -= 2
+        y = draw_section_title(y, "VISTORIA VEICULO")
+
+        # Fuel gauge
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(lx + 4, y - 10, "COMBUSTIVEL DE SAIDA")
+        fuel_labels = ["RES.", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "CHEIO"]
+        fx = lx + 4
+        fy = y - 22
+        for i, fl in enumerate(fuel_labels):
+            c.setFont("Helvetica", 5)
+            c.drawString(fx + i * 28, fy, fl)
+        c.line(lx + 4, fy - 3, lx + 4 + 28 * 9, fy - 3)
+        fy -= 6
+        for i, fl in enumerate(fuel_labels):
+            c.drawString(fx + i * 28, fy, fl)
+        y = fy - 12
+
+        # Checklist items
+        items = ["MACACO", "ESTEPE", "FERRAM.", "TRIANGULO", "DOCUMENTO", "EXTINTOR", "CALOTAS", "TOCA-FITAS", "CD PLAYER"]
+        c.setFont("Helvetica", 6)
+        for item in items:
+            c.rect(lx + 4, y - 8, 8, 8)
+            c.drawString(lx + 16, y - 7, item)
+            y -= 11
+
+        # Observacoes
+        c.setFont("Helvetica-Bold", 6)
+        obs_text = contrato.observacoes or ""
+        c.drawString(lx + 4, y - 8, "Observacoes: {}".format(obs_text[:60]))
+        y -= 30
+
+        # === RIGHT COLUMN ===
+        rx = w / 2 + 4
+        rw = col_right_w
+        ry = y_line - 4
+
+        # --- QUILOMETRAGEM ---
+        ry_sec = ry
+        c.setFont("Helvetica-Bold", 9)
+        c.rect(rx, ry_sec - 16, rw, 16)
+        c.drawCentredString(rx + rw / 2, ry_sec - 12, "QUILOMETRAGEM")
+        ry_sec -= 20
+
+        data_saida = contrato.data_inicio.strftime("%d/%m/%Y") if contrato.data_inicio else ""
+        hora_saida = contrato.data_inicio.strftime("%H:%M") if contrato.data_inicio else ""
+        data_entrada = contrato.data_fim.strftime("%d/%m/%Y") if contrato.data_fim else ""
+        hora_entrada = contrato.data_fim.strftime("%H:%M") if contrato.data_fim else ""
+        km_saida = "{:,.0f}".format(contrato.km_inicial) if contrato.km_inicial else ""
+        km_entrada = "{:,.0f}".format(contrato.km_final) if contrato.km_final else ""
+
+        # Quilometragem fields (2 columns)
+        qh = 16
+        hw2 = rw / 2
+        fields_km = [
+            ("DATA SAIDA:", data_saida, "DATA ENTRADA:", data_entrada),
+            ("HORA SAIDA:", hora_saida, "HORA ENTRADA:", hora_entrada),
+            ("KM SAIDA:", km_saida, "KM ENTRADA:", km_entrada),
+            ("KM LIVRES/DIA:", "", "KM PERCORRIDOS:", ""),
         ]
-        story.append(_info_table(info_data))
-        story.append(Spacer(1, 16))
+        for f1l, f1v, f2l, f2v in fields_km:
+            draw_field_box(rx, ry_sec, f1l, f1v, hw2, qh)
+            ry_sec = draw_field_box(rx + hw2, ry_sec, f2l, f2v, hw2, qh)
 
-        # PJ section if applicable
-        if empresa:
-            story.append(Paragraph("<b>DADOS DA EMPRESA (PESSOA JURIDICA)</b>", sec_style))
-            pj_data = [
-                ["Razao Social:", empresa.razao_social or empresa.nome],
-                ["CNPJ:", empresa.cnpj],
-                ["Endereco:", "{}, {}/{}".format(empresa.endereco or "", empresa.cidade or "", empresa.estado or "")],
-                ["Telefone:", empresa.telefone or "N/A"],
-                ["Email:", empresa.email or "N/A"],
-                ["Contato:", empresa.contato_principal or "N/A"],
-            ]
-            story.append(_info_table(pj_data))
-            story.append(Spacer(1, 8))
-            story.append(Paragraph("<b>CONDUTOR AUTORIZADO</b>", sec_style))
+        # --- QUILOMETRAGEM pricing table ---
+        ry_sec -= 4
+        c.setFont("Helvetica-Bold", 9)
+        c.rect(rx, ry_sec - 16, rw, 16)
+        c.drawCentredString(rx + rw / 2, ry_sec - 12, "QUILOMETRAGEM")
+        ry_sec -= 16
 
-        # Client info
-        if not empresa:
-            story.append(Paragraph("<b>DADOS DO CLIENTE (PESSOA FISICA)</b>", sec_style))
-        client_data = [
-            ["Nome:", cliente.nome if cliente else "N/A"],
-            ["CPF:", cliente.cpf if cliente else "N/A"],
-            ["RG:", (cliente.rg or "N/A") if cliente else "N/A"],
-            ["Telefone:", (cliente.telefone or "N/A") if cliente else "N/A"],
-            ["Email:", (cliente.email or "N/A") if cliente else "N/A"],
-            ["CNH:", "{} - Cat. {}".format(cliente.numero_cnh or "N/A", cliente.categoria_cnh or "N/A") if cliente else "N/A"],
-            ["Validade CNH:", cliente.validade_cnh.strftime("%d/%m/%Y") if cliente and cliente.validade_cnh else "N/A"],
-            ["Endereco:", "{}, {}/{}".format(cliente.endereco_residencial or "", cliente.cidade_residencial or "", cliente.estado_residencial or "") if cliente else "N/A"],
+        # Table header
+        cols = [rw * 0.35, rw * 0.15, rw * 0.25, rw * 0.25]
+        headers = ["DISCRIMINACAO", "QUANT.", "PRECO UNIT.", "PRECO TOTAL"]
+        c.setFont("Helvetica-Bold", 5.5)
+        cx = rx
+        for i, hd in enumerate(headers):
+            c.rect(cx, ry_sec - 14, cols[i], 14)
+            c.drawCentredString(cx + cols[i] / 2, ry_sec - 10, hd)
+            cx += cols[i]
+        ry_sec -= 14
+
+        # Table rows
+        valor_diaria = "R$ {:,.2f}".format(float(contrato.valor_diaria)) if contrato.valor_diaria else ""
+        valor_total = "R$ {:,.2f}".format(float(contrato.valor_total)) if contrato.valor_total else ""
+        dias = ""
+        if contrato.data_inicio and contrato.data_fim:
+            delta = contrato.data_fim - contrato.data_inicio
+            dias = str(delta.days)
+
+        rows = [
+            ("DIARIA", dias, valor_diaria, valor_total),
+            ("HORA EXTRA", "", "", ""),
+            ("KM EXCEDENTE", "", "", ""),
+            ("SUB-TOTAL", "", "", valor_total),
+            ("AVARIAS", "", "", ""),
+            ("DESCONTO", "", "", ""),
         ]
-        story.append(_info_table(client_data))
-        story.append(Spacer(1, 16))
+        c.setFont("Helvetica", 6)
+        for row_data in rows:
+            cx = rx
+            for i, val in enumerate(row_data):
+                c.rect(cx, ry_sec - 14, cols[i], 14)
+                c.drawCentredString(cx + cols[i] / 2, ry_sec - 10, str(val))
+                cx += cols[i]
+            ry_sec -= 14
 
-        # Vehicle info
-        story.append(Paragraph("<b>DADOS DO VEICULO</b>", sec_style))
-        vehicle_data = [
-            ["Placa:", veiculo.placa if veiculo else "N/A"],
-            ["Marca/Modelo:", "{} {}".format(veiculo.marca, veiculo.modelo) if veiculo else "N/A"],
-            ["Ano:", str(veiculo.ano) if veiculo else "N/A"],
-            ["Cor:", (veiculo.cor or "N/A") if veiculo else "N/A"],
-            ["Combustivel:", (veiculo.combustivel or "N/A") if veiculo else "N/A"],
-            ["Chassi:", (veiculo.chassis or "N/A") if veiculo else "N/A"],
-            ["RENAVAM:", (veiculo.renavam or "N/A") if veiculo else "N/A"],
+        # TOTAL R$
+        c.setFont("Helvetica-Bold", 7)
+        c.rect(rx, ry_sec - 16, rw, 16)
+        c.drawString(rx + rw * 0.5, ry_sec - 12, "TOTAL R$")
+        c.drawString(rx + rw * 0.75, ry_sec - 12, valor_total)
+        ry_sec -= 20
+
+        # --- CARTOES DE CREDITO ---
+        c.setFont("Helvetica-Bold", 9)
+        c.rect(rx, ry_sec - 16, rw, 16)
+        c.drawCentredString(rx + rw / 2, ry_sec - 12, "CARTOES DE CREDITO")
+        ry_sec -= 20
+
+        card_names = ["AMERICAN EXPRESS", "SOLO", "HIPER", "HIPER CARD", "VISA", "DINER'S"]
+        c.setFont("Helvetica", 5.5)
+        cx_card = rx
+        cw_card = rw / len(card_names)
+        for cn in card_names:
+            c.rect(cx_card, ry_sec - 12, cw_card, 12)
+            c.drawCentredString(cx_card + cw_card / 2, ry_sec - 9, cn)
+            cx_card += cw_card
+        ry_sec -= 16
+
+        c.setFont("Helvetica", 6)
+        c.drawString(rx, ry_sec - 8, "NOME: _______________________________________________________")
+        ry_sec -= 14
+        c.drawString(rx, ry_sec - 8, "No: __________________________________________ COD.:___________")
+        ry_sec -= 14
+        c.drawString(rx, ry_sec - 8, "PRE/AUT.:__________________ VAL.:_____________ R$:_____________")
+        ry_sec -= 18
+
+        # --- AVISO MULTAS ---
+        c.setFont("Helvetica-Bold", 6)
+        c.rect(rx, ry_sec - 20, rw, 20, fill=0)
+        c.drawCentredString(rx + rw / 2, ry_sec - 9, "EVENTUAIS MULTAS SERAO COBRADAS POSTERIORMENTE,")
+        c.drawCentredString(rx + rw / 2, ry_sec - 17, "DECLARO-ME CIENTE DO CONTEUDO DESTE CONTRATO")
+        ry_sec -= 24
+
+        # --- Terms text ---
+        c.setFont("Helvetica", 5.5)
+        terms_lines = [
+            "O cliente e responsavel por todas as infracoes de transito:",
+            "autorizando a locadora debitar despesas extras em seu cartao de",
+            "credito.",
+            "Custumeris llable for all parking and traffic violations.",
+            "Terminantemente proibido o trafego de carro em dunas e beira-mar,",
+            "caso seja contatado incidira multa de R$ 1.000,00 (hum mil reais) e",
+            "rescisao de contrato por parte da locadora.",
+            "Depois de ter lido devidamente os termos e condicoes do contrato",
+            "no anveso e verso, concordo expressamente, firmo presente.",
         ]
-        story.append(_info_table(vehicle_data))
-        story.append(Spacer(1, 16))
+        for line in terms_lines:
+            c.drawString(rx + 2, ry_sec, line)
+            ry_sec -= 8
 
-        # Rental period
-        story.append(Paragraph("<b>PERIODO DE LOCACAO</b>", sec_style))
-        period_data = [
-            ["Data Inicio:", contrato.data_inicio.strftime("%d/%m/%Y %H:%M") if contrato.data_inicio else "N/A"],
-            ["Data Fim:", contrato.data_fim.strftime("%d/%m/%Y %H:%M") if contrato.data_fim else "N/A"],
-            ["KM Inicial:", "{:,.0f} km".format(contrato.km_inicial) if contrato.km_inicial else "N/A"],
-            ["KM Final:", "{:,.0f} km".format(contrato.km_final) if contrato.km_final else "A definir"],
+        # Assinatura do cliente
+        ry_sec -= 6
+        c.drawString(rx + 2, ry_sec, "___________________________________________________________")
+        ry_sec -= 10
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(rx + rw / 2, ry_sec, "Assinatura do Cliente")
+        ry_sec -= 14
+
+        # --- TERMOS DE DECLARACAO DE MULTAS ---
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(rx + rw / 2, ry_sec, "TERMOS DE DECLARACAO DE MULTAS")
+        ry_sec -= 12
+
+        c.setFont("Helvetica", 5)
+        multa_lines = [
+            "Declaro conhecer a legislacao em vigor relativo ao novo Codigo",
+            "de Transito Brasileiro e me responsabilizo inteiramente por quais quer",
+            "penalidades decorrentes das infracoes por mim cometidas na",
+            "conducao do veiculo locado, quer pecuniarias ou pontuacao, que",
+            "serao informadas por MPCAR'S. A autoridade de transito, para que",
+            "estas respectivas notificacoes e recibos de pagamento das multas,",
+            "conforme verso e anverso deste contrato.",
+            "",
+            "O Locatario, desde ja constitui a LOCADORA sua bastante",
+            "procuradora para fim especifico de atender resolucao no 72/98 do",
+            "CONTRAN ficando a LOCADORA autorizada a assinar, em nome deste",
+            "LOCATARIO e campo correspondente e assinatura do condutor",
+            "infrator, no formulario de identificacao. Em caso de infracao de",
+            "transito.",
+            "",
+            "Fica ainda estabelecido, que esta autorizacao so sera valida, se o",
         ]
-        story.append(_info_table(period_data))
-        story.append(Spacer(1, 16))
+        for line in multa_lines:
+            c.drawString(rx + 2, ry_sec, line)
+            ry_sec -= 7
 
-        # Expenses
-        if despesas:
-            story.append(Paragraph("<b>DESPESAS ADICIONAIS</b>", sec_style))
-            expense_rows = [["Tipo", "Descricao", "Valor"]]
-            total_despesas = 0
-            for d in despesas:
-                val = float(d.valor) if d.valor else 0
-                total_despesas += val
-                expense_rows.append([d.tipo or "N/A", d.descricao or "N/A", "R$ {:,.2f}".format(val)])
-            expense_rows.append(["", "TOTAL DESPESAS", "R$ {:,.2f}".format(total_despesas)])
-            story.append(_styled_table(expense_rows, col_widths=[1.5*inch, 3*inch, 1.5*inch]))
-            story.append(Spacer(1, 16))
+        c.drawString(rx + 2, ry_sec, "Data e Hora da Saida: ____________________________________")
+        ry_sec -= 14
+        c.drawString(rx + 2, ry_sec, "______________________________________________________")
 
-        # Signatures
-        story.append(Spacer(1, 40))
-        sig_style = ParagraphStyle("Sig", parent=styles["Normal"], fontSize=10, alignment=TA_CENTER)
-        sig_data = [
-            [Paragraph("____________________________", sig_style), Paragraph("____________________________", sig_style)],
-            [Paragraph("LOCADOR", sig_style), Paragraph("LOCATARIO", sig_style)],
-            [Paragraph(empresa_info.get("empresa_nome", "MPCARS"), sig_style), Paragraph(cliente.nome if cliente else "N/A", sig_style)],
+        # --- FOOTER PAGE 1 ---
+        c.setFont("Helvetica", 5.5)
+        c.drawCentredString(w / 2, margin - 5, "RUA MANOEL ALEXANDRE 1048 - LJ 02 - EDIFICIO COMERCIAL E RESIDENCIAL")
+        c.drawCentredString(w / 2, margin - 13, "PRINCESINHA DO OESTE - CEP 59900-000 - PAU DOS FERROS-RN")
+        c.drawCentredString(w / 2, margin - 21, "CNPJ.: 52.471.526/0001-53  84 99911-0504")
+
+        # ============ PAGE 2: TERMS AND CONDITIONS ============
+        c.showPage()
+        c.setFont("Helvetica", 6)
+
+        # Two-column layout for terms
+        col1_x = margin
+        col2_x = w / 2 + 8
+        col_w = w / 2 - margin - 8
+        ty = h - margin
+
+        clausulas_col1 = [
+            "Carroceria, com hodometro instalado pelo fabricante,",
+            "lacrado, em boas condicoes de utilizacao, encontra-se o",
+            "veiculo locado;",
+            "1) caracterizado no anverso deste documento, nos quadros",
+            "respectivos, O(A) LOCATARIO(A) recebe e aceita com",
+            "plenos conhecimentos o referido veiculo e respectivos",
+            "acessorios, conforme relacao em anexo e se obriga a",
+            "indenizar totalmente a LOCADORA no momento de entrega",
+            "do veiculo, pelos acessorios eventualmente faltante, ao",
+            "preco vigente no mercado.",
+            "2) O preco de aluguel do veiculo locado sera declarado no",
+            "anverso deste contrato calculado com base na tabela de",
+            "tarifas da LOCADORA da qual o LOCATARIO (A) tem pleno",
+            "conhecimento. Ficara ao(s) cargo(s) do(a) LOCATARIO(A)",
+            "deste contrato; b) uma vez efetuada a devolucao do veiculo",
+            "locado a LOCADORA, estabelecera o valor do aluguel, nos",
+            "termos do presente contrato, precedendo ao desconto da",
+            "quantia ja paga a titulo de adiantamento, devendo o(a)",
+            "LOCATARIO(A) efetuar a LOCADORA o pagamento da",
+            "diferenca resultante; c) por ocasiao da devolucao do",
+            "veiculo, o(a) LOCATARIO(A) se compromete a pagar a",
+            "LOCADORA O imposto sobre servicos incidentes sobre o",
+            "custo total do aluguel e das tarifas adicionais; d) na falta de",
+            "pagamento pontual dos servicos prestados ao",
+            "LOCATARIO(A), ficara este(a) sujeito(a) ao pagamento de",
+            "multa equivalente a 20% (vinte por cento) sobre o valor",
+            "devido, acrescido de juros de 25% (vinte e cinco por cento)",
+            "ao mes.",
+            "3) O prazo de vigencia do presente contrato esta indicado no",
+            "quadro respectivo, devendo o(a) LOCATARIO(A) efetuar a",
+            "devolucao do veiculo no dia, hora e local estipulado, e",
+            "somente podera ser prorrogado com anuencia da",
+            "LOCADORA, por escrito no anverso do presente contrato.",
+            "4) Findo o prazo contratual devera o(a)",
+            "LOCATARIO(A)restituir o veiculo a LOCADORA, no mesmo",
+            "estado em que recebeu, excluindo-se apenas o desgaste",
+            "normal dos pneumaticos.",
+            "5) A nao devolucao do veiculo locado por parte do(a)",
+            "LOCATARIO(A), implicara na pratica de apropriacao",
+            "indebita, ficando o(a) mesmo(a) sujeito(a) as leis penais,",
+            "podendo a LOCADORA promover contra o(a)",
+            "LOCATARIO(A) a competente representacao junto as",
+            "autoridades policiais, para abertura de inquerito policial,",
+            "bem como a retomada do veiculo locado.",
+            "6) Todas e quaisquer despesas que se fizerem necessarias,",
+            "para a retomada e posse do veiculo locado, inclusive",
+            "judiciais e extrajudiciais, bem como aquelas decorrentes de",
+            "transporte e remocao do mesmo. Correcao por conta",
+            "exclusiva do(a) LOCATARIO(A).",
+            "7) A LOCADORA podera propor contra o(a) LOCATARIO(A)",
+            "as competentes acoes civeis que se fizerem necessarias.",
+            "8) O veiculo locado destinar-se-a unico e exclusivo ao",
+            "transporte de pessoas e a referido veiculo so podera ser",
+            "conduzido pelo(a) LOCATARIO(A), ou, sob sua",
+            "responsabilidade, pelo motorista ou motoristas por ele",
+            "indicados, desde que estejam qualificados no anverso deste",
+            "mesmo contrato.",
+            "9) O(A) LOCATARIO(A) se obriga nao utilizar o veiculo",
+            "locado em outro Estado sem o consentimento por da",
+            "LOCADORA. 10) Sao obrigacoes do(a) LOCATARIO(A),",
+            "bem como do(s) motoristas indicados pelo LOCATARIO.",
+            "a) conduzir o veiculo locado durante a locacao, munido da",
+            "documentacao legal correspondente, e expedida pelas",
+            "autoridades competentes, que o autorizem a conduzir o",
+            "veiculo locado;",
+            "b) nao fazendo uso do veiculo para fins lucrativo;",
         ]
-        sig_table = Table(sig_data, colWidths=[3.25*inch, 3.25*inch])
-        sig_table.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 4)]))
-        story.append(sig_table)
 
-        _add_footer(story, styles)
-        doc.build(story)
+        for line in clausulas_col1:
+            c.drawString(col1_x, ty, line)
+            ty -= 8
+
+        clausulas_col2 = [
+            "c) nao sub-locar o veiculo;",
+            "d) obedecer as leis de transito, Federal, Estadual e",
+            "I) o pagamento das multas Impostas por quaisquer",
+            "transgressoes a regulamentacao de transito ou qualquer",
+            "outra regulamentacao (autorizando a locadora a debitar em",
+            "cartao de credito); e ou emitir duplicata;",
+            "m) responder por todos os atos licitos efetuados com veiculo",
+            "no interior do mesmo;",
+            "n) reembolsar a LOCADORA os correspondentes aos",
+            "combustiveis faltante no caso do veiculo locado ser",
+            "devolvido com menor quantidade de combustivel que havia",
+            "no momento da entrega do veiculo a o(a) LOCATARIO(A).",
+            "11) No caso de acidente ou desaparecimento do veiculo",
+            "locado, durante o prazo de vigencia do presente contrato,",
+            "o(a) LOCATARIO(A), se obriga a comunicar imediatamente",
+            "o evento as AUTORIDADES competentes, apresentando o",
+            "comprovante deste comunicado a LOCADORA, sob pena",
+            "de ser responsabilizado(a) pelo abandono do veiculo, e:",
+            "a) no caso de acidente ou qualquer outro incidente que",
+            "venha a ser atribuido ao LOCATARIO(A), como",
+            "consequencia do nao cumprimento das disposicoes",
+            "contidas neste contrato o(a) LOCATARIO(A) reembolsara a",
+            "LOCADORA o aluguel correspondente ao periodo em que,",
+            "uma vez ultrapassado o prazo de locacao, o veiculo locado",
+            "nao se encontre a disposicao da LOCADORA, bem como",
+            "multa equivalente a 20% (vinte por sobre o valor devido,",
+            "acrescido de juros de 25% (vinte e cinco por cento) ao mes.",
+            "12) Se durante o prazo de locacao, ocorrer algum defeito no",
+            "marcador de quilometragem (hodometro) o(a)",
+            "LOCATARIO(A) se compromete a avisar de imediato a",
+            "LOCADORA, para que se proceda ao conserto do referido",
+            "defeito; neste caso fica, desde ja estabelecido entre as",
+            "partes que a tarifa de quilometragem sera calculada com",
+            "base na media de 1.000 (hum mil quilometros por dia).",
+            "13) A LOCADORA nao se responsabiliza pelos objetos",
+            "pessoais esquecidos pelo(a) LOCATARIO(A) ou seus",
+            "passageiros no Interior do veiculo ou em seus",
+            "estabelecimentos, nem pelos danos ou depreciacao",
+            "sofridas por objetos transportados em seus veiculos.",
+            "14) Este contrato se encerra:",
+            "a) por haver expirado o prazo fixado no mesmo;",
+            "b) por acordo expresso entre as partes;",
+            "c) por rescisao;",
+            "d) por perdas, danos ou defeitos desconhecidos que",
+            "Inutilizem o veiculo aludido, ou pela destruicao do mesmo;",
+            "e) por morte do(a) LOCATARIO(A).",
+            "15) Dar-se-a a rescisao deste contrato, na hipotese do nao",
+            "cumprimento por parte do(a) LOCATARIO(A) das",
+            "obrigacoes pactuadas neste instrumento.",
+        ]
+
+        ry2 = h - margin
+        for line in clausulas_col2:
+            c.drawString(col2_x, ry2, line)
+            ry2 -= 8
+
+        # Signatures at bottom
+        sig_y = min(ty, ry2) - 30
+        if sig_y < 120:
+            sig_y = 120
+
+        c.setLineWidth(0.5)
+        # Left signatures
+        c.line(col1_x, sig_y, col1_x + 180, sig_y)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(col1_x, sig_y - 10, "LOCATARIO")
+
+        c.line(col1_x, sig_y - 30, col1_x + 180, sig_y - 30)
+        c.drawString(col1_x, sig_y - 40, "LOCADORA")
+
+        # Right signatures
+        c.line(col2_x, sig_y, col2_x + 180, sig_y)
+        c.drawString(col2_x, sig_y - 10, "TESTEMUNHA 1")
+
+        c.line(col2_x, sig_y - 30, col2_x + 180, sig_y - 30)
+        c.drawString(col2_x, sig_y - 40, "TESTEMUNHA 2")
+
+        c.save()
         buffer.seek(0)
         return buffer
 

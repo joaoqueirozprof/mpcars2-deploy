@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import date, datetime
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import Seguro, ParcelaSeguro, Veiculo
 
@@ -56,16 +57,26 @@ class ParcelaResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/", response_model=List[SeguroResponse])
+@router.get("/")
 def list_seguros(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all insurance policies."""
-    seguros = db.query(Seguro).offset(skip).limit(limit).all()
-    return seguros
+    """List all insurance policies with pagination."""
+    query = db.query(Seguro)
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        search=search,
+        search_fields=["seguradora", "numero_apolice"],
+        model=Seguro,
+        status_filter=status,
+    )
 
 
 @router.post("/", response_model=SeguroResponse)

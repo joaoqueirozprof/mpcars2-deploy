@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import date, datetime, timedelta
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import IpvaAliquota, IpvaRegistro, Veiculo
 
@@ -109,16 +110,23 @@ def create_aliquota(
     return db_aliquota
 
 
-@router.get("/registros", response_model=List[IpvaRegistroResponse])
+@router.get("/registros")
 def list_registros(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all IPVA records."""
-    registros = db.query(IpvaRegistro).offset(skip).limit(limit).all()
-    return registros
+    """List all IPVA records with pagination."""
+    query = db.query(IpvaRegistro)
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        model=IpvaRegistro,
+        status_filter=status,
+    )
 
 
 @router.post("/registros", response_model=IpvaRegistroResponse)

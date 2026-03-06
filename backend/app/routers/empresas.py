@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import datetime
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import Empresa, MotoristaEmpresa, Cliente
 
@@ -60,16 +61,24 @@ class MotoristaEmpresaResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/", response_model=List[EmpresaResponse])
+@router.get("/")
 def list_empresas(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all companies."""
-    empresas = db.query(Empresa).offset(skip).limit(limit).all()
-    return empresas
+    """List all companies with pagination."""
+    query = db.query(Empresa)
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        search=search,
+        search_fields=["nome", "cnpj", "razao_social"],
+        model=Empresa,
+    )
 
 
 @router.post("/", response_model=EmpresaResponse)

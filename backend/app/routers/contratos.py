@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import (
     Contrato,
@@ -67,16 +68,29 @@ class DespesaContratoResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/", response_model=List[ContratoResponse])
+@router.get("/")
 def list_contratos(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all contracts."""
-    contratos = db.query(Contrato).offset(skip).limit(limit).all()
-    return contratos
+    """List all contracts with pagination."""
+    query = db.query(Contrato).options(
+        joinedload(Contrato.cliente),
+        joinedload(Contrato.veiculo),
+    )
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        search=search,
+        search_fields=["numero"],
+        model=Contrato,
+        status_filter=status,
+    )
 
 
 @router.get("/atrasados", response_model=List[ContratoResponse])

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from pydantic import BaseModel, EmailStr
@@ -6,6 +6,7 @@ from typing import Optional, List
 from datetime import date
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import Cliente, Empresa
 
@@ -64,16 +65,32 @@ class ClienteResponse(ClienteBase):
         from_attributes = True
 
 
-@router.get("/", response_model=List[ClienteResponse])
+@router.get("/")
 def list_clientes(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    search: Optional[str] = None,
+    tipo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all clients."""
-    clientes = db.query(Cliente).offset(skip).limit(limit).all()
-    return clientes
+    """List all clients with pagination."""
+    query = db.query(Cliente)
+
+    # Filter by tipo (pf/pj)
+    if tipo == "pf":
+        query = query.filter(Cliente.empresa_id == None)
+    elif tipo == "pj":
+        query = query.filter(Cliente.empresa_id != None)
+
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        search=search,
+        search_fields=["nome", "cpf", "email", "telefone"],
+        model=Cliente,
+    )
 
 
 @router.get("/search", response_model=List[ClienteResponse])

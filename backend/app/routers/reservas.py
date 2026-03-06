@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import datetime
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import Reserva, Cliente, Veiculo, Contrato
 
@@ -39,16 +40,23 @@ class ReservaResponse(ReservaBase):
         from_attributes = True
 
 
-@router.get("/", response_model=List[ReservaResponse])
+@router.get("/")
 def list_reservas(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all reservations."""
-    reservas = db.query(Reserva).offset(skip).limit(limit).all()
-    return reservas
+    """List all reservations with pagination."""
+    query = db.query(Reserva)
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        model=Reserva,
+        status_filter=status,
+    )
 
 
 @router.post("/", response_model=ReservaResponse)

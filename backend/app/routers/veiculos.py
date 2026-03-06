@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import date
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import Veiculo, DespesaVeiculo, Contrato
 
@@ -49,16 +50,26 @@ class VeiculoResponse(VeiculoBase):
         from_attributes = True
 
 
-@router.get("/", response_model=List[VeiculoResponse])
+@router.get("/")
 def list_veiculos(
-    skip: int = 0,
-    limit: int = 50,
+    page: int = 1,
+    limit: int = 1000,
+    search: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all vehicles."""
-    veiculos = db.query(Veiculo).offset(skip).limit(limit).all()
-    return veiculos
+    """List all vehicles with pagination."""
+    query = db.query(Veiculo)
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        search=search,
+        search_fields=["placa", "marca", "modelo", "cor"],
+        model=Veiculo,
+        status_filter=status_filter,
+    )
 
 
 @router.get("/search", response_model=List[VeiculoResponse])

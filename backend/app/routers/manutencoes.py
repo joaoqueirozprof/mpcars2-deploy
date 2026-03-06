@@ -5,6 +5,7 @@ from typing import Optional, List
 from datetime import date, datetime, timedelta
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.pagination import paginate
 from app.models.user import User
 from app.models import Manutencao, Veiculo
 
@@ -45,16 +46,31 @@ class ManutencaoResponse(ManutencaoBase):
         from_attributes = True
 
 
-@router.get("/", response_model=List[ManutencaoResponse])
+@router.get("/")
 def list_manutencoes(
-    skip: int = 0,
+    page: int = 1,
     limit: int = 50,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    tipo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all maintenance records."""
-    manutencoes = db.query(Manutencao).offset(skip).limit(limit).all()
-    return manutencoes
+    """List all maintenance records with pagination."""
+    query = db.query(Manutencao)
+    extra = {}
+    if tipo:
+        extra["tipo"] = tipo
+    return paginate(
+        query=query,
+        page=page,
+        limit=limit,
+        search=search,
+        search_fields=["descricao", "oficina"],
+        model=Manutencao,
+        status_filter=status,
+        extra_filters=extra if extra else None,
+    )
 
 
 @router.post("/", response_model=ManutencaoResponse)
