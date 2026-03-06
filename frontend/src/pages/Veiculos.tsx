@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -12,11 +12,22 @@ import {
   AlertTriangle,
   Wrench,
   XCircle,
+  Camera,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react'
 import api from '@/services/api'
 import AppLayout from '@/components/layout/AppLayout'
 import { Veiculo } from '@/types'
 import toast from 'react-hot-toast'
+
+const API_BASE = (() => {
+  const hostname = window.location.hostname
+  if (hostname === '72.61.129.78' || hostname === 'localhost') {
+    return `http://${hostname}:8002/api/v1`
+  }
+  return '/api/v1'
+})()
 
 const Veiculos: React.FC = () => {
   const queryClient = useQueryClient()
@@ -28,6 +39,11 @@ const Veiculos: React.FC = () => {
   })
   const [statusFilter, setStatusFilter] = useState<string>('todos')
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [viewingPhoto, setViewingPhoto] = useState<{ isOpen: boolean; url?: string; placa?: string }>({ isOpen: false })
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     placa: '',
     marca: '',
@@ -56,6 +72,7 @@ const Veiculos: React.FC = () => {
         data_compra: v.data_aquisicao || '',
         observacoes: '',
         cor: v.cor || '',
+        foto_url: v.foto_url || null,
       }))
     },
   })
@@ -85,28 +102,37 @@ const Veiculos: React.FC = () => {
   // Create vehicle mutation
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/veiculos', data),
-    onSuccess: () => {
+    onSuccess: async (response) => {
+      const newVehicleId = response.data.id
+      // Upload photo if selected
+      if (photoFile && newVehicleId) {
+        await uploadPhoto(newVehicleId)
+      }
       queryClient.invalidateQueries({ queryKey: ['veiculos'] })
       setIsModalOpen(false)
       resetForm()
-      toast.success('Veículo criado com sucesso!')
+      toast.success('Veiculo criado com sucesso!')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Erro ao criar veículo')
+      toast.error(error.response?.data?.detail || 'Erro ao criar veiculo')
     },
   })
 
   // Update vehicle mutation
   const updateMutation = useMutation({
     mutationFn: (data: any) => api.patch(`/veiculos/${editingVehicle?.id}`, data),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Upload photo if new one selected
+      if (photoFile && editingVehicle?.id) {
+        await uploadPhoto(Number(editingVehicle.id))
+      }
       queryClient.invalidateQueries({ queryKey: ['veiculos'] })
       setIsModalOpen(false)
       resetForm()
-      toast.success('Veículo atualizado com sucesso!')
+      toast.success('Veiculo atualizado com sucesso!')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Erro ao atualizar veículo')
+      toast.error(error.response?.data?.detail || 'Erro ao atualizar veiculo')
     },
   })
 
@@ -116,29 +142,89 @@ const Veiculos: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['veiculos'] })
       setDeleteConfirm({ isOpen: false })
-      toast.success('Veículo deletado com sucesso!')
+      toast.success('Veiculo deletado com sucesso!')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Erro ao deletar veículo')
+      toast.error(error.response?.data?.detail || 'Erro ao deletar veiculo')
     },
   })
+
+  const uploadPhoto = async (vehicleId: number) => {
+    if (!photoFile) return
+    setUploadingPhoto(true)
+    try {
+      const formDataUpload = new FormData()
+      formDataUpload.append('foto', photoFile)
+      await api.post(`/veiculos/${vehicleId}/foto`, formDataUpload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    } catch (err: any) {
+      toast.error('Erro ao enviar foto: ' + (err.response?.data?.detail || 'Erro desconhecido'))
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+      toast.error('Tipo de arquivo nao permitido. Use JPEG, PNG, WebP ou GIF.')
+      return
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Maximo 10MB.')
+      return
+    }
+
+    setPhotoFile(file)
+    const reader = new FileReader()
+    reader.onloadend = () => setPhotoPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const removePhoto = async () => {
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+
+    // If editing and vehicle has a photo, delete it from server
+    if (editingVehicle?.foto_url) {
+      try {
+        await api.delete(`/veiculos/${editingVehicle.id}/foto`)
+        queryClient.invalidateQueries({ queryKey: ['veiculos'] })
+        toast.success('Foto removida!')
+      } catch {
+        toast.error('Erro ao remover foto')
+      }
+    }
+  }
+
+  const getVehiclePhotoUrl = (vehicle: Veiculo) => {
+    if (!vehicle.foto_url) return null
+    return `${API_BASE}/veiculos/foto/${vehicle.id}?t=${Date.now()}`
+  }
 
   // Form validation
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {}
 
     if (!formData.placa.trim()) {
-      errors.placa = 'Placa é obrigatória'
+      errors.placa = 'Placa e obrigatoria'
     } else if (!/^[A-Z]{3}\d{4}$|^[A-Z]{3}\d[A-Z]\d{2}$/.test(formData.placa)) {
-      errors.placa = 'Formato inválido (ABC1234 ou ABC1D23)'
+      errors.placa = 'Formato invalido (ABC1234 ou ABC1D23)'
     }
 
     if (!formData.marca.trim()) {
-      errors.marca = 'Marca é obrigatória'
+      errors.marca = 'Marca e obrigatoria'
     }
 
     if (!formData.modelo.trim()) {
-      errors.modelo = 'Modelo é obrigatório'
+      errors.modelo = 'Modelo e obrigatorio'
     }
 
     if (!formData.ano || formData.ano < 1990 || formData.ano > currentYear + 1) {
@@ -146,7 +232,7 @@ const Veiculos: React.FC = () => {
     }
 
     if (formData.quilometragem < 0) {
-      errors.quilometragem = 'Quilometragem não pode ser negativa'
+      errors.quilometragem = 'Quilometragem nao pode ser negativa'
     }
 
     setFormErrors(errors)
@@ -168,6 +254,9 @@ const Veiculos: React.FC = () => {
     })
     setFormErrors({})
     setEditingVehicle(null)
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleOpenModal = (vehicle?: Veiculo) => {
@@ -185,6 +274,13 @@ const Veiculos: React.FC = () => {
         data_compra: vehicle.data_compra,
         observacoes: vehicle.observacoes,
       })
+      // Set photo preview if vehicle has a photo
+      if (vehicle.foto_url) {
+        setPhotoPreview(getVehiclePhotoUrl(vehicle))
+      } else {
+        setPhotoPreview(null)
+      }
+      setPhotoFile(null)
     } else {
       resetForm()
     }
@@ -250,11 +346,11 @@ const Veiculos: React.FC = () => {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'disponivel':
-        return 'Disponível'
+        return 'Disponivel'
       case 'alugado':
         return 'Alugado'
       case 'manutencao':
-        return 'Manutenção'
+        return 'Manutencao'
       case 'inativo':
         return 'Inativo'
       default:
@@ -264,14 +360,14 @@ const Veiculos: React.FC = () => {
 
   const statusFilters = [
     { key: 'todos', label: 'Todos' },
-    { key: 'disponivel', label: 'Disponível' },
+    { key: 'disponivel', label: 'Disponivel' },
     { key: 'alugado', label: 'Alugado' },
-    { key: 'manutencao', label: 'Manutenção' },
+    { key: 'manutencao', label: 'Manutencao' },
     { key: 'inativo', label: 'Inativo' },
   ]
 
   const isLoading = isLoadingVehicles
-  const isMutating = createMutation.isPending || updateMutation.isPending
+  const isMutating = createMutation.isPending || updateMutation.isPending || uploadingPhoto
 
   return (
     <AppLayout>
@@ -279,15 +375,15 @@ const Veiculos: React.FC = () => {
         {/* Page Header */}
         <div className="page-header">
           <div>
-            <h1 className="page-title">Veículos</h1>
-            <p className="page-subtitle">Gerenciar e controlar frota de veículos</p>
+            <h1 className="page-title">Veiculos</h1>
+            <p className="page-subtitle">Gerenciar e controlar frota de veiculos</p>
           </div>
           <button
             onClick={() => handleOpenModal()}
             className="btn-primary flex items-center gap-2 transition-all duration-200"
           >
             <Plus size={20} />
-            Novo Veículo
+            Novo Veiculo
           </button>
         </div>
 
@@ -336,11 +432,11 @@ const Veiculos: React.FC = () => {
               <div className="empty-state-icon">
                 <Car size={48} />
               </div>
-              <h3 className="text-xl font-semibold text-slate-900 mt-4">Nenhum veículo encontrado</h3>
+              <h3 className="text-xl font-semibold text-slate-900 mt-4">Nenhum veiculo encontrado</h3>
               <p className="text-slate-600 mt-2">
                 {searchTerm
-                  ? 'Nenhum veículo corresponde à sua busca'
-                  : 'Comece a adicionar veículos à sua frota'}
+                  ? 'Nenhum veiculo corresponde a sua busca'
+                  : 'Comece a adicionar veiculos a sua frota'}
               </p>
               {!searchTerm && (
                 <button
@@ -348,7 +444,7 @@ const Veiculos: React.FC = () => {
                   className="btn-primary mt-6 inline-flex items-center gap-2"
                 >
                   <Plus size={18} />
-                  Adicionar Primeiro Veículo
+                  Adicionar Primeiro Veiculo
                 </button>
               )}
             </div>
@@ -359,13 +455,14 @@ const Veiculos: React.FC = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="table-header text-left">Foto</th>
                     <th className="table-header text-left">Placa</th>
                     <th className="table-header text-left">Marca/Modelo</th>
                     <th className="table-header text-left">Ano</th>
                     <th className="table-header text-left">Cor</th>
                     <th className="table-header text-left">Status</th>
                     <th className="table-header text-left">Km</th>
-                    <th className="table-header text-center">Ações</th>
+                    <th className="table-header text-center">Acoes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -374,6 +471,21 @@ const Veiculos: React.FC = () => {
                       key={vehicle.id}
                       className="border-b border-slate-200 hover:bg-slate-50 transition-colors duration-150"
                     >
+                      <td className="table-cell">
+                        {vehicle.foto_url ? (
+                          <img
+                            src={getVehiclePhotoUrl(vehicle)!}
+                            alt={`${vehicle.marca} ${vehicle.modelo}`}
+                            className="w-12 h-12 rounded-lg object-cover cursor-pointer border border-slate-200 hover:opacity-80 transition-opacity"
+                            onClick={() => setViewingPhoto({ isOpen: true, url: getVehiclePhotoUrl(vehicle)!, placa: vehicle.placa })}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                            <Car size={20} className="text-slate-400" />
+                          </div>
+                        )}
+                      </td>
                       <td className="table-cell">
                         <span className="font-semibold text-slate-900">{vehicle.placa}</span>
                       </td>
@@ -441,7 +553,7 @@ const Veiculos: React.FC = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h3 className="text-lg font-display font-bold text-slate-900">
-                {editingVehicle ? 'Editar Veículo' : 'Novo Veículo'}
+                {editingVehicle ? 'Editar Veiculo' : 'Novo Veiculo'}
               </h3>
               <button
                 onClick={() => !isMutating && setIsModalOpen(false)}
@@ -455,6 +567,67 @@ const Veiculos: React.FC = () => {
             {/* Modal Body */}
             <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden flex-1">
             <div className="px-6 py-5 overflow-y-auto max-h-[calc(85vh-130px)]">
+
+              {/* Photo Upload Section */}
+              <div className="mb-6">
+                <label className="input-label flex items-center gap-2">
+                  <Camera size={16} />
+                  Foto do Veiculo
+                </label>
+                <div className="flex items-center gap-4 mt-2">
+                  {/* Photo Preview */}
+                  <div className="relative">
+                    {photoPreview ? (
+                      <div className="relative group">
+                        <img
+                          src={photoPreview}
+                          alt="Preview"
+                          className="w-32 h-32 rounded-xl object-cover border-2 border-slate-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={removePhoto}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                          disabled={isMutating}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <ImageIcon size={28} className="text-slate-400 mb-1" />
+                        <span className="text-xs text-slate-500">Sem foto</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Button */}
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="btn-secondary inline-flex items-center gap-2 text-sm"
+                      disabled={isMutating}
+                    >
+                      <Upload size={16} />
+                      {photoPreview ? 'Trocar Foto' : 'Enviar Foto'}
+                    </button>
+                    <p className="text-xs text-slate-500">JPEG, PNG, WebP ou GIF. Max 10MB.</p>
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handlePhotoChange}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Placa */}
                 <div>
@@ -551,9 +724,9 @@ const Veiculos: React.FC = () => {
                   )}
                 </div>
 
-                {/* Valor Aquisição */}
+                {/* Valor Aquisicao */}
                 <div>
-                  <label className="input-label">Valor Aquisição</label>
+                  <label className="input-label">Valor Aquisicao</label>
                   <input
                     type="number"
                     value={formData.valor_aquisicao}
@@ -587,20 +760,20 @@ const Veiculos: React.FC = () => {
                     className="input-field"
                     disabled={isMutating}
                   >
-                    <option value="disponivel">Disponível</option>
+                    <option value="disponivel">Disponivel</option>
                     <option value="alugado">Alugado</option>
-                    <option value="manutencao">Manutenção</option>
+                    <option value="manutencao">Manutencao</option>
                     <option value="inativo">Inativo</option>
                   </select>
                 </div>
 
-                {/* Observações */}
+                {/* Observacoes */}
                 <div className="md:col-span-2">
-                  <label className="input-label">Observações</label>
+                  <label className="input-label">Observacoes</label>
                   <textarea
                     value={formData.observacoes}
                     onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                    placeholder="Adicione notas sobre o veículo..."
+                    placeholder="Adicione notas sobre o veiculo..."
                     rows={3}
                     className="input-field resize-none"
                     disabled={isMutating}
@@ -624,13 +797,45 @@ const Veiculos: React.FC = () => {
                 className="btn-primary inline-flex items-center gap-2"
                 disabled={isMutating}
               >
-                {isMutating && <div className="animate-spin">⟳</div>}
-                {editingVehicle ? 'Atualizar' : 'Criar'} Veículo
+                {isMutating && <div className="animate-spin">&#x27F3;</div>}
+                {editingVehicle ? 'Atualizar' : 'Criar'} Veiculo
               </button>
             </div>
           </form>
         </div>
       </div>
+      )}
+
+      {/* Photo Viewer Modal */}
+      {viewingPhoto.isOpen && viewingPhoto.url && (
+        <div
+          className="modal-overlay"
+          onClick={() => setViewingPhoto({ isOpen: false })}
+        >
+          <div
+            className="modal-content max-w-3xl w-full flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-display font-bold text-slate-900">
+                Foto - {viewingPhoto.placa}
+              </h3>
+              <button
+                onClick={() => setViewingPhoto({ isOpen: false })}
+                className="btn-icon"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 flex items-center justify-center">
+              <img
+                src={viewingPhoto.url}
+                alt={`Veiculo ${viewingPhoto.placa}`}
+                className="max-w-full max-h-[60vh] rounded-xl object-contain"
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Modal */}
@@ -645,7 +850,7 @@ const Veiculos: React.FC = () => {
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h3 className="text-lg font-display font-bold text-slate-900">Deletar Veículo</h3>
+              <h3 className="text-lg font-display font-bold text-slate-900">Deletar Veiculo</h3>
               <button
                 onClick={() => setDeleteConfirm({ isOpen: false })}
                 className="btn-icon"
@@ -663,9 +868,9 @@ const Veiculos: React.FC = () => {
                 </div>
 
                 <p className="text-slate-600 mt-2">
-                  Tem certeza que deseja deletar o veículo <span className="font-semibold">{deleteConfirm.placa}</span>?
+                  Tem certeza que deseja deletar o veiculo <span className="font-semibold">{deleteConfirm.placa}</span>?
                 </p>
-                <p className="text-sm text-slate-500 mt-2">Esta ação não pode ser desfeita.</p>
+                <p className="text-sm text-slate-500 mt-2">Esta acao nao pode ser desfeita.</p>
               </div>
             </div>
 
@@ -683,7 +888,7 @@ const Veiculos: React.FC = () => {
                 className="btn-danger inline-flex items-center justify-center gap-2"
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending && <div className="animate-spin">⟳</div>}
+                {deleteMutation.isPending && <div className="animate-spin">&#x27F3;</div>}
                 Deletar
               </button>
             </div>

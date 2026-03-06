@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import uuid
+import shutil
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -10,7 +14,10 @@ from app.models.user import User
 from app.models import Veiculo, DespesaVeiculo, Contrato
 
 
-router = APIRouter(prefix="/veiculos", tags=["Veículos"])
+UPLOAD_DIR = "/app/uploads/veiculos"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+router = APIRouter(prefix="/veiculos", tags=["Veiculos"])
 
 
 class VeiculoBase(BaseModel):
@@ -64,6 +71,7 @@ class VeiculoResponse(BaseModel):
     data_aquisicao: Optional[date] = None
     valor_aquisicao: Optional[float] = None
     status: str = "disponivel"
+    foto_url: Optional[str] = None
     ativo: bool = True
 
     class Config:
@@ -125,7 +133,7 @@ def get_veiculo_km(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
     return {"veiculo_id": veiculo_id, "km_atual": veiculo.km_atual}
 
@@ -140,7 +148,7 @@ def get_veiculo_status(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
     return {"veiculo_id": veiculo_id, "status": veiculo.status}
 
@@ -155,7 +163,7 @@ def get_veiculo_financial_analysis(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
 
     despesas = db.query(DespesaVeiculo).filter(
@@ -171,6 +179,102 @@ def get_veiculo_financial_analysis(
     }
 
 
+@router.get("/foto/{veiculo_id}")
+def get_veiculo_foto(
+    veiculo_id: int,
+    db: Session = Depends(get_db),
+):
+    """Serve vehicle photo file."""
+    veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
+    if not veiculo or not veiculo.foto_url:
+        raise HTTPException(status_code=404, detail="Foto nao encontrada")
+
+    file_path = os.path.join(UPLOAD_DIR, veiculo.foto_url)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Arquivo de foto nao encontrado")
+
+    return FileResponse(file_path)
+
+
+@router.post("/{veiculo_id}/foto")
+async def upload_veiculo_foto(
+    veiculo_id: int,
+    foto: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload a photo for a vehicle."""
+    veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
+    if not veiculo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
+        )
+
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    if foto.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tipo de arquivo nao permitido. Use JPEG, PNG, WebP ou GIF.",
+        )
+
+    # Validate file size (max 10MB)
+    contents = await foto.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo muito grande. Maximo 10MB.",
+        )
+
+    # Delete old photo if exists
+    if veiculo.foto_url:
+        old_path = os.path.join(UPLOAD_DIR, veiculo.foto_url)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    # Save new photo
+    ext = os.path.splitext(foto.filename or "photo.jpg")[1] or ".jpg"
+    filename = f"veiculo_{veiculo_id}_{uuid.uuid4().hex[:8]}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    # Update database
+    veiculo.foto_url = filename
+    db.commit()
+    db.refresh(veiculo)
+
+    return {
+        "message": "Foto enviada com sucesso",
+        "foto_url": filename,
+        "veiculo_id": veiculo_id,
+    }
+
+
+@router.delete("/{veiculo_id}/foto")
+def delete_veiculo_foto(
+    veiculo_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a vehicle photo."""
+    veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
+    if not veiculo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
+        )
+
+    if veiculo.foto_url:
+        file_path = os.path.join(UPLOAD_DIR, veiculo.foto_url)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        veiculo.foto_url = None
+        db.commit()
+
+    return {"message": "Foto removida com sucesso"}
+
+
 @router.post("/", response_model=VeiculoResponse)
 def create_veiculo(
     veiculo: VeiculoCreate,
@@ -181,7 +285,7 @@ def create_veiculo(
     existing = db.query(Veiculo).filter(Veiculo.placa == veiculo.placa).first()
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Placa já cadastrada"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Placa ja cadastrada"
         )
 
     db_veiculo = Veiculo(**veiculo.model_dump())
@@ -201,7 +305,7 @@ def get_veiculo(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
     return veiculo
 
@@ -217,7 +321,7 @@ def update_veiculo(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
 
     update_data = veiculo_data.model_dump(exclude_unset=True)
@@ -240,7 +344,7 @@ def patch_veiculo(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
 
     update_data = veiculo_data.model_dump(exclude_unset=True)
@@ -262,7 +366,14 @@ def delete_veiculo(
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
     if not veiculo:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veiculo nao encontrado"
         )
+
+    # Delete photo file if exists
+    if veiculo.foto_url:
+        file_path = os.path.join(UPLOAD_DIR, veiculo.foto_url)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
     db.delete(veiculo)
     db.commit()

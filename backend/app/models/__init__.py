@@ -86,6 +86,7 @@ class Veiculo(Base):
     checklist_item_8 = Column(Integer, default=0)
     checklist_item_9 = Column(Integer, default=0)
     checklist_item_10 = Column(Integer, default=0)
+    foto_url = Column(String, nullable=True)
     data_cadastro = Column(DateTime, server_default=func.now())
     ativo = Column(Boolean, default=True)
 

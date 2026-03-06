@@ -42,6 +42,7 @@ export interface Veiculo {
   data_compra: string;
   valor_aquisicao: number;
   observacoes: string;
+  foto_url: string | null;
   ativo: boolean;
 }
 
