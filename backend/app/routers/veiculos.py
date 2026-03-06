@@ -386,11 +386,13 @@ def delete_veiculo(
     contrato_ids = [c.id for c in contratos]
 
     if contrato_ids:
-        # Delete contrato dependents
+        # Delete contrato dependents (including multas that reference contrato)
         db.query(Quilometragem).filter(Quilometragem.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
         db.query(DespesaContrato).filter(DespesaContrato.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
         db.query(ProrrogacaoContrato).filter(ProrrogacaoContrato.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
         db.query(CheckinCheckout).filter(CheckinCheckout.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(Multa).filter(Multa.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
         # Delete contratos
         db.query(Contrato).filter(Contrato.veiculo_id == veiculo_id).delete(synchronize_session=False)
 
