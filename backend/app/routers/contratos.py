@@ -241,18 +241,13 @@ def get_contrato_pdf(
             status_code=status.HTTP_404_NOT_FOUND, detail="Contrato não encontrado"
         )
 
-    import traceback
-    try:
-        pdf_buffer = PDFService.generate_contrato_pdf(db, contrato_id)
-        pdf_buffer.seek(0)
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="contrato_{contrato.numero}.pdf"'},
-        )
-    except Exception as e:
-        tb = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=f"PDF error: {str(e)}\n{tb}")
+    pdf_buffer = PDFService.generate_contrato_pdf(db, contrato_id)
+    pdf_buffer.seek(0)
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="contrato_{contrato.numero}.pdf"'},
+    )
 
 
 @router.get("/{contrato_id}/despesas", response_model=List[DespesaContratoResponse])
