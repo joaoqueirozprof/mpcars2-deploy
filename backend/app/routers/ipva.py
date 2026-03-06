@@ -114,7 +114,7 @@ def create_aliquota(
 def list_ipva(
     page: int = 1,
     limit: int = 50,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     veiculo_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -130,7 +130,7 @@ def list_ipva(
         page=page,
         limit=limit,
         model=IpvaRegistro,
-        status_filter=status,
+        status_filter=status_filter,
         extra_filters=extra if extra else None,
     )
 
@@ -139,18 +139,19 @@ def list_ipva(
 def list_registros(
     page: int = 1,
     limit: int = 50,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List all IPVA records with pagination."""
-    query = db.query(IpvaRegistro)
+    from sqlalchemy.orm import joinedload
+    query = db.query(IpvaRegistro).options(joinedload(IpvaRegistro.veiculo))
     return paginate(
         query=query,
         page=page,
         limit=limit,
         model=IpvaRegistro,
-        status_filter=status,
+        status_filter=status_filter,
     )
 
 

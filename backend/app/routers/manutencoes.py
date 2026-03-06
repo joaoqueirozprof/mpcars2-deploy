@@ -46,12 +46,15 @@ class ManutencaoResponse(ManutencaoBase):
         from_attributes = True
 
 
+# === Fixed path routes FIRST ===
+
+
 @router.get("/")
 def list_manutencoes(
     page: int = 1,
     limit: int = 50,
     search: Optional[str] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     tipo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -68,7 +71,7 @@ def list_manutencoes(
         search=search,
         search_fields=["descricao", "oficina"],
         model=Manutencao,
-        status_filter=status,
+        status_filter=status_filter,
         extra_filters=extra if extra else None,
     )
 
@@ -91,6 +94,78 @@ def create_manutencao(
     db.commit()
     db.refresh(db_manutencao)
     return db_manutencao
+
+
+@router.get("/pendentes")
+def get_manutencoes_pendentes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get pending maintenance records."""
+    manutencoes = db.query(Manutencao).filter(
+        Manutencao.status == "pendente"
+    ).all()
+    return manutencoes
+
+
+@router.get("/resumo")
+def get_manutencoes_resumo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get maintenance summary."""
+    total_manutencoes = db.query(Manutencao).count()
+    manutencoes_pendentes = db.query(Manutencao).filter(
+        Manutencao.status == "pendente"
+    ).count()
+    total_custo = sum(float(m.custo) for m in db.query(Manutencao).all() if m.custo)
+
+    agora = datetime.now().date()
+    vencendo_em_30_dias = db.query(Manutencao).filter(
+        (Manutencao.data_proxima.between(agora, agora + timedelta(days=30)))
+        & (Manutencao.status == "pendente")
+    ).count()
+
+    return {
+        "total_manutencoes": total_manutencoes,
+        "manutencoes_pendentes": manutencoes_pendentes,
+        "total_custo": total_custo,
+        "vencendo_em_30_dias": vencendo_em_30_dias,
+    }
+
+
+@router.get("/alerta-km/{veiculo_id}")
+def get_alerta_km(
+    veiculo_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get kilometer alert for vehicle."""
+    veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
+    if not veiculo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
+        )
+
+    manutencoes = db.query(Manutencao).filter(
+        (Manutencao.veiculo_id == veiculo_id) & (Manutencao.status == "pendente")
+    ).all()
+
+    alertas = []
+    for manu in manutencoes:
+        if manu.km_proxima and veiculo.km_atual >= manu.km_proxima:
+            alertas.append({
+                "manutencao_id": manu.id,
+                "tipo": manu.tipo,
+                "km_prevista": manu.km_proxima,
+                "km_atual": veiculo.km_atual,
+                "km_restante": manu.km_proxima - veiculo.km_atual,
+            })
+
+    return alertas
+
+
+# === Parameterized routes AFTER ===
 
 
 @router.get("/{manutencao_id}", response_model=ManutencaoResponse)
@@ -129,75 +204,6 @@ def update_manutencao(
     db.commit()
     db.refresh(manutencao)
     return manutencao
-
-
-@router.get("/pendentes")
-def get_manutencoes_pendentes(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get pending maintenance records."""
-    manutencoes = db.query(Manutencao).filter(
-        Manutencao.status == "pendente"
-    ).all()
-    return manutencoes
-
-
-@router.get("/alerta-km/{veiculo_id}")
-def get_alerta_km(
-    veiculo_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get kilometer alert for vehicle."""
-    veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
-    if not veiculo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Veículo não encontrado"
-        )
-
-    manutencoes = db.query(Manutencao).filter(
-        (Manutencao.veiculo_id == veiculo_id) & (Manutencao.status == "pendente")
-    ).all()
-
-    alertas = []
-    for manu in manutencoes:
-        if manu.km_proxima and veiculo.km_atual >= manu.km_proxima:
-            alertas.append({
-                "manutencao_id": manu.id,
-                "tipo": manu.tipo,
-                "km_prevista": manu.km_proxima,
-                "km_atual": veiculo.km_atual,
-                "km_restante": manu.km_proxima - veiculo.km_atual,
-            })
-
-    return alertas
-
-
-@router.get("/resumo")
-def get_manutencoes_resumo(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get maintenance summary."""
-    total_manutencoes = db.query(Manutencao).count()
-    manutencoes_pendentes = db.query(Manutencao).filter(
-        Manutencao.status == "pendente"
-    ).count()
-    total_custo = sum(float(m.custo) for m in db.query(Manutencao).all() if m.custo)
-
-    agora = datetime.now().date()
-    vencendo_em_30_dias = db.query(Manutencao).filter(
-        (Manutencao.data_proxima.between(agora, agora + timedelta(days=30)))
-        & (Manutencao.status == "pendente")
-    ).count()
-
-    return {
-        "total_manutencoes": total_manutencoes,
-        "manutencoes_pendentes": manutencoes_pendentes,
-        "total_custo": total_custo,
-        "vencendo_em_30_dias": vencendo_em_30_dias,
-    }
 
 
 @router.post("/{manutencao_id}/completar")

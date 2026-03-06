@@ -73,7 +73,7 @@ def list_contratos(
     page: int = 1,
     limit: int = 50,
     search: Optional[str] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -86,7 +86,7 @@ def list_contratos(
         search=search,
         search_fields=["numero"],
         model=Contrato,
-        status_filter=status,
+        status_filter=status_filter,
     )
 
 

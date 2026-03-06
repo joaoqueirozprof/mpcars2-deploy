@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.pagination import paginate
@@ -57,12 +57,15 @@ class ParcelaResponse(BaseModel):
         from_attributes = True
 
 
+# === Fixed path routes FIRST (before /{seguro_id}) ===
+
+
 @router.get("/")
 def list_seguros(
     page: int = 1,
     limit: int = 50,
     search: Optional[str] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -75,7 +78,7 @@ def list_seguros(
         search=search,
         search_fields=["seguradora", "numero_apolice"],
         model=Seguro,
-        status_filter=status,
+        status_filter=status_filter,
     )
 
 
@@ -106,15 +109,14 @@ def create_seguro(
     db.commit()
     db.refresh(db_seguro)
 
-    # Create installments
+    # Create installments (guard against division by zero)
+    qtd = seguro.qtd_parcelas if seguro.qtd_parcelas and seguro.qtd_parcelas > 0 else 1
     dias_entre = (seguro.data_fim - seguro.data_inicio).days
-    dias_por_parcela = dias_entre // seguro.qtd_parcelas
-    valor_parcela = seguro.valor / seguro.qtd_parcelas
+    dias_por_parcela = max(1, dias_entre // qtd)
+    valor_parcela = seguro.valor / qtd
 
-    for i in range(1, seguro.qtd_parcelas + 1):
-        vencimento = seguro.data_inicio + __import__("datetime").timedelta(
-            days=dias_por_parcela * i
-        )
+    for i in range(1, qtd + 1):
+        vencimento = seguro.data_inicio + timedelta(days=dias_por_parcela * i)
         parcela = ParcelaSeguro(
             seguro_id=db_seguro.id,
             veiculo_id=seguro.veiculo_id,
@@ -126,6 +128,42 @@ def create_seguro(
 
     db.commit()
     return db_seguro
+
+
+@router.get("/vencendo/proximos")
+def get_seguros_vencendo(
+    dias: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get insurance policies expiring soon."""
+    agora = date.today()
+    fim = agora + timedelta(days=dias)
+
+    seguros = db.query(Seguro).filter(
+        (Seguro.data_fim.between(agora, fim)) & (Seguro.status == "ativo")
+    ).all()
+    return seguros
+
+
+@router.get("/resumo")
+def get_seguros_resumo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get insurance summary."""
+    total_seguros = db.query(Seguro).count()
+    seguros_ativos = db.query(Seguro).filter(Seguro.status == "ativo").count()
+    total_valor = sum(float(s.valor) for s in db.query(Seguro).all() if s.valor)
+
+    return {
+        "total_seguros": total_seguros,
+        "seguros_ativos": seguros_ativos,
+        "total_valor": total_valor,
+    }
+
+
+# === Parameterized routes AFTER fixed paths ===
 
 
 @router.get("/{seguro_id}", response_model=SeguroResponse)
@@ -203,41 +241,6 @@ def pagar_parcela(
     db.commit()
     db.refresh(parcela)
     return parcela
-
-
-@router.get("/vencendo/proximos")
-def get_seguros_vencendo(
-    dias: int = 30,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get insurance policies expiring soon."""
-    from datetime import timedelta
-
-    agora = date.today()
-    fim = agora + timedelta(days=dias)
-
-    seguros = db.query(Seguro).filter(
-        (Seguro.data_fim.between(agora, fim)) & (Seguro.status == "ativo")
-    ).all()
-    return seguros
-
-
-@router.get("/resumo")
-def get_seguros_resumo(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get insurance summary."""
-    total_seguros = db.query(Seguro).count()
-    seguros_ativos = db.query(Seguro).filter(Seguro.status == "ativo").count()
-    total_valor = sum(float(s.valor) for s in db.query(Seguro).all() if s.valor)
-
-    return {
-        "total_seguros": total_seguros,
-        "seguros_ativos": seguros_ativos,
-        "total_valor": total_valor,
-    }
 
 
 @router.delete("/{seguro_id}", status_code=status.HTTP_204_NO_CONTENT)

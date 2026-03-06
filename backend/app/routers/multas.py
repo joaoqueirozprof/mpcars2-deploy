@@ -42,12 +42,15 @@ class MultaResponse(MultaBase):
         from_attributes = True
 
 
+# === Fixed path routes FIRST ===
+
+
 @router.get("/")
 def list_multas(
     page: int = 1,
     limit: int = 50,
     search: Optional[str] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -60,7 +63,7 @@ def list_multas(
         search=search,
         search_fields=["responsavel", "gravidade"],
         model=Multa,
-        status_filter=status,
+        status_filter=status_filter,
     )
 
 
@@ -84,6 +87,37 @@ def create_multa(
     db.commit()
     db.refresh(db_multa)
     return db_multa
+
+
+@router.get("/resumo")
+def get_multas_resumo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get fines summary."""
+    total_multas = db.query(Multa).count()
+    multas_pendentes = db.query(Multa).filter(Multa.status == "pendente").count()
+    total_valor = sum(float(m.valor) for m in db.query(Multa).all() if m.valor)
+
+    return {
+        "total_multas": total_multas,
+        "multas_pendentes": multas_pendentes,
+        "total_valor": total_valor,
+    }
+
+
+@router.get("/veiculo/{veiculo_id}", response_model=List[MultaResponse])
+def get_multas_veiculo(
+    veiculo_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get fines for a vehicle."""
+    multas = db.query(Multa).filter(Multa.veiculo_id == veiculo_id).all()
+    return multas
+
+
+# === Parameterized routes AFTER ===
 
 
 @router.get("/{multa_id}", response_model=MultaResponse)
@@ -141,34 +175,6 @@ def pagar_multa(
     db.commit()
     db.refresh(multa)
     return multa
-
-
-@router.get("/resumo")
-def get_multas_resumo(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get fines summary."""
-    total_multas = db.query(Multa).count()
-    multas_pendentes = db.query(Multa).filter(Multa.status == "pendente").count()
-    total_valor = sum(float(m.valor) for m in db.query(Multa).all() if m.valor)
-
-    return {
-        "total_multas": total_multas,
-        "multas_pendentes": multas_pendentes,
-        "total_valor": total_valor,
-    }
-
-
-@router.get("/veiculo/{veiculo_id}", response_model=List[MultaResponse])
-def get_multas_veiculo(
-    veiculo_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get fines for a vehicle."""
-    multas = db.query(Multa).filter(Multa.veiculo_id == veiculo_id).all()
-    return multas
 
 
 @router.delete("/{multa_id}", status_code=status.HTTP_204_NO_CONTENT)

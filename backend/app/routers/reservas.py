@@ -44,7 +44,7 @@ class ReservaResponse(ReservaBase):
 def list_reservas(
     page: int = 1,
     limit: int = 50,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -55,8 +55,25 @@ def list_reservas(
         page=page,
         limit=limit,
         model=Reserva,
-        status_filter=status,
+        status_filter=status_filter,
     )
+
+
+@router.get("/agenda")
+def get_agenda_reservas(
+    veiculo_id: Optional[int] = None,
+    cliente_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get reservations calendar/agenda."""
+    query = db.query(Reserva)
+    if veiculo_id:
+        query = query.filter(Reserva.veiculo_id == veiculo_id)
+    if cliente_id:
+        query = query.filter(Reserva.cliente_id == cliente_id)
+    reservas = query.all()
+    return reservas
 
 
 @router.post("/", response_model=ReservaResponse)
@@ -197,26 +214,6 @@ def converter_para_contrato(
     db.commit()
     db.refresh(contrato)
     return contrato
-
-
-@router.get("/agenda")
-def get_agenda_reservas(
-    veiculo_id: Optional[int] = None,
-    cliente_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get reservations calendar/agenda."""
-    query = db.query(Reserva)
-
-    if veiculo_id:
-        query = query.filter(Reserva.veiculo_id == veiculo_id)
-
-    if cliente_id:
-        query = query.filter(Reserva.cliente_id == cliente_id)
-
-    reservas = query.all()
-    return reservas
 
 
 @router.delete("/{reserva_id}", status_code=status.HTTP_204_NO_CONTENT)
