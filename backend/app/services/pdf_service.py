@@ -467,59 +467,90 @@ class PDFService:
         c.drawCentredString(rx + rw / 2, ry_sec - 17, "DECLARO-ME CIENTE DO CONTEUDO DESTE CONTRATO")
         ry_sec -= 24
 
-        # --- Terms text ---
-        c.setFont("Helvetica", 5.5)
-        terms_lines = [
-            "O cliente e responsavel por todas as infracoes de transito:",
-            "autorizando a locadora debitar despesas extras em seu cartao de",
-            "credito.",
-            "Custumeris llable for all parking and traffic violations.",
-            "Terminantemente proibido o trafego de carro em dunas e beira-mar,",
-            "caso seja contatado incidira multa de R$ 1.000,00 (hum mil reais) e",
-            "rescisao de contrato por parte da locadora.",
-            "Depois de ter lido devidamente os termos e condicoes do contrato",
-            "no anveso e verso, concordo expressamente, firmo presente.",
-        ]
-        for line in terms_lines:
-            c.drawString(rx + 2, ry_sec, line)
-            ry_sec -= 8
+        # --- Terms text (justified using Paragraph) ---
+        from reportlab.platypus import Paragraph as RLParagraph
+        from reportlab.lib.styles import ParagraphStyle as RLParagraphStyle
+        from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER as TA_C
+
+        terms_style = RLParagraphStyle(
+            "TermsText", fontName="Helvetica", fontSize=5.5,
+            leading=7, alignment=TA_JUSTIFY, spaceBefore=0, spaceAfter=0,
+        )
+        terms_center = RLParagraphStyle(
+            "TermsCenter", fontName="Helvetica-Bold", fontSize=6,
+            leading=8, alignment=TA_C, spaceBefore=0, spaceAfter=0,
+        )
+        title_center = RLParagraphStyle(
+            "TitleCenter", fontName="Helvetica-Bold", fontSize=8,
+            leading=10, alignment=TA_C, spaceBefore=0, spaceAfter=0,
+        )
+        multa_style = RLParagraphStyle(
+            "MultaText", fontName="Helvetica", fontSize=5.5,
+            leading=7, alignment=TA_JUSTIFY, spaceBefore=0, spaceAfter=0,
+        )
+
+        terms_text = (
+            "O cliente e responsavel por todas as infracoes de transito, "
+            "autorizando a locadora debitar despesas extras em seu cartao de credito. "
+            "Costumeris liable for all parking and traffic violations. "
+            "Terminantemente proibido o trafego de carro em dunas e beira-mar, "
+            "caso seja contatado incidira multa de R$ 1.000,00 (hum mil reais) e "
+            "rescisao de contrato por parte da locadora. "
+            "Depois de ter lido devidamente os termos e condicoes do contrato "
+            "no anveso e verso, concordo expressamente, firmo presente."
+        )
+        p = RLParagraph(terms_text, terms_style)
+        pw, ph = p.wrap(rw - 4, 200)
+        p.drawOn(c, rx + 2, ry_sec - ph)
+        ry_sec -= ph + 6
 
         # Assinatura do cliente
-        ry_sec -= 6
-        c.drawString(rx + 2, ry_sec, "___________________________________________________________")
+        c.drawCentredString(rx + rw / 2, ry_sec, "___________________________________________________________")
         ry_sec -= 10
-        c.setFont("Helvetica-Bold", 6)
-        c.drawCentredString(rx + rw / 2, ry_sec, "Assinatura do Cliente")
-        ry_sec -= 14
+        p = RLParagraph("Assinatura do Cliente", terms_center)
+        pw, ph = p.wrap(rw, 20)
+        p.drawOn(c, rx, ry_sec - ph)
+        ry_sec -= ph + 8
 
         # --- TERMOS DE DECLARACAO DE MULTAS ---
-        c.setFont("Helvetica-Bold", 8)
-        c.drawCentredString(rx + rw / 2, ry_sec, "TERMOS DE DECLARACAO DE MULTAS")
-        ry_sec -= 12
+        p = RLParagraph("TERMOS DE DECLARACAO DE MULTAS", title_center)
+        pw, ph = p.wrap(rw, 20)
+        p.drawOn(c, rx, ry_sec - ph)
+        ry_sec -= ph + 6
 
-        c.setFont("Helvetica", 5)
-        multa_lines = [
-            "Declaro conhecer a legislacao em vigor relativo ao novo Codigo",
-            "de Transito Brasileiro e me responsabilizo inteiramente por quais quer",
-            "penalidades decorrentes das infracoes por mim cometidas na",
-            "conducao do veiculo locado, quer pecuniarias ou pontuacao, que",
-            "serao informadas por MPCAR'S. A autoridade de transito, para que",
-            "estas respectivas notificacoes e recibos de pagamento das multas,",
-            "conforme verso e anverso deste contrato.",
-            "",
-            "O Locatario, desde ja constitui a LOCADORA sua bastante",
-            "procuradora para fim especifico de atender resolucao no 72/98 do",
-            "CONTRAN ficando a LOCADORA autorizada a assinar, em nome deste",
-            "LOCATARIO e campo correspondente e assinatura do condutor",
-            "infrator, no formulario de identificacao. Em caso de infracao de",
-            "transito.",
-            "",
-            "Fica ainda estabelecido, que esta autorizacao so sera valida, se o",
-        ]
-        for line in multa_lines:
-            c.drawString(rx + 2, ry_sec, line)
-            ry_sec -= 7
+        multa_text1 = (
+            "Declaro conhecer a legislacao em vigor relativo ao novo Codigo "
+            "de Transito Brasileiro e me responsabilizo inteiramente por quais quer "
+            "penalidades decorrentes das infracoes por mim cometidas na "
+            "conducao do veiculo locado, quer pecuniarias ou pontuacao, que "
+            "serao informadas por MPCAR'S. A autoridade de transito, para que "
+            "estas respectivas notificacoes e recibos de pagamento das multas, "
+            "conforme verso e anverso deste contrato."
+        )
+        p = RLParagraph(multa_text1, multa_style)
+        pw, ph = p.wrap(rw - 4, 200)
+        p.drawOn(c, rx + 2, ry_sec - ph)
+        ry_sec -= ph + 6
 
+        multa_text2 = (
+            "O Locatario, desde ja constitui a LOCADORA sua bastante "
+            "procuradora para fim especifico de atender resolucao no 72/98 do "
+            "CONTRAN ficando a LOCADORA autorizada a assinar, em nome deste "
+            "LOCATARIO e campo correspondente e assinatura do condutor "
+            "infrator, no formulario de identificacao. Em caso de infracao de transito."
+        )
+        p = RLParagraph(multa_text2, multa_style)
+        pw, ph = p.wrap(rw - 4, 200)
+        p.drawOn(c, rx + 2, ry_sec - ph)
+        ry_sec -= ph + 6
+
+        multa_text3 = "Fica ainda estabelecido, que esta autorizacao so sera valida, se o"
+        p = RLParagraph(multa_text3, multa_style)
+        pw, ph = p.wrap(rw - 4, 200)
+        p.drawOn(c, rx + 2, ry_sec - ph)
+        ry_sec -= ph + 4
+
+        c.setFont("Helvetica", 5.5)
         c.drawString(rx + 2, ry_sec, "Data e Hora da Saida: ____________________________________")
         ry_sec -= 14
         c.drawString(rx + 2, ry_sec, "______________________________________________________")
@@ -532,7 +563,6 @@ class PDFService:
 
         # ============ PAGE 2: TERMS AND CONDITIONS ============
         c.showPage()
-        c.setFont("Helvetica", 6)
 
         # Two-column layout for terms
         col1_x = margin
@@ -540,156 +570,142 @@ class PDFService:
         col_w = w / 2 - margin - 8
         ty = h - margin
 
-        clausulas_col1 = [
-            "Carroceria, com hodometro instalado pelo fabricante,",
-            "lacrado, em boas condicoes de utilizacao, encontra-se o",
-            "veiculo locado;",
-            "1) caracterizado no anverso deste documento, nos quadros",
-            "respectivos, O(A) LOCATARIO(A) recebe e aceita com",
-            "plenos conhecimentos o referido veiculo e respectivos",
-            "acessorios, conforme relacao em anexo e se obriga a",
-            "indenizar totalmente a LOCADORA no momento de entrega",
-            "do veiculo, pelos acessorios eventualmente faltante, ao",
-            "preco vigente no mercado.",
-            "2) O preco de aluguel do veiculo locado sera declarado no",
-            "anverso deste contrato calculado com base na tabela de",
-            "tarifas da LOCADORA da qual o LOCATARIO (A) tem pleno",
-            "conhecimento. Ficara ao(s) cargo(s) do(a) LOCATARIO(A)",
-            "deste contrato; b) uma vez efetuada a devolucao do veiculo",
-            "locado a LOCADORA, estabelecera o valor do aluguel, nos",
-            "termos do presente contrato, precedendo ao desconto da",
-            "quantia ja paga a titulo de adiantamento, devendo o(a)",
-            "LOCATARIO(A) efetuar a LOCADORA o pagamento da",
-            "diferenca resultante; c) por ocasiao da devolucao do",
-            "veiculo, o(a) LOCATARIO(A) se compromete a pagar a",
-            "LOCADORA O imposto sobre servicos incidentes sobre o",
-            "custo total do aluguel e das tarifas adicionais; d) na falta de",
-            "pagamento pontual dos servicos prestados ao",
-            "LOCATARIO(A), ficara este(a) sujeito(a) ao pagamento de",
-            "multa equivalente a 20% (vinte por cento) sobre o valor",
-            "devido, acrescido de juros de 25% (vinte e cinco por cento)",
-            "ao mes.",
-            "3) O prazo de vigencia do presente contrato esta indicado no",
-            "quadro respectivo, devendo o(a) LOCATARIO(A) efetuar a",
-            "devolucao do veiculo no dia, hora e local estipulado, e",
-            "somente podera ser prorrogado com anuencia da",
-            "LOCADORA, por escrito no anverso do presente contrato.",
-            "4) Findo o prazo contratual devera o(a)",
-            "LOCATARIO(A)restituir o veiculo a LOCADORA, no mesmo",
-            "estado em que recebeu, excluindo-se apenas o desgaste",
-            "normal dos pneumaticos.",
-            "5) A nao devolucao do veiculo locado por parte do(a)",
-            "LOCATARIO(A), implicara na pratica de apropriacao",
-            "indebita, ficando o(a) mesmo(a) sujeito(a) as leis penais,",
-            "podendo a LOCADORA promover contra o(a)",
-            "LOCATARIO(A) a competente representacao junto as",
-            "autoridades policiais, para abertura de inquerito policial,",
-            "bem como a retomada do veiculo locado.",
-            "6) Todas e quaisquer despesas que se fizerem necessarias,",
-            "para a retomada e posse do veiculo locado, inclusive",
-            "judiciais e extrajudiciais, bem como aquelas decorrentes de",
-            "transporte e remocao do mesmo. Correcao por conta",
-            "exclusiva do(a) LOCATARIO(A).",
-            "7) A LOCADORA podera propor contra o(a) LOCATARIO(A)",
-            "as competentes acoes civeis que se fizerem necessarias.",
-            "8) O veiculo locado destinar-se-a unico e exclusivo ao",
-            "transporte de pessoas e a referido veiculo so podera ser",
-            "conduzido pelo(a) LOCATARIO(A), ou, sob sua",
-            "responsabilidade, pelo motorista ou motoristas por ele",
-            "indicados, desde que estejam qualificados no anverso deste",
-            "mesmo contrato.",
-            "9) O(A) LOCATARIO(A) se obriga nao utilizar o veiculo",
-            "locado em outro Estado sem o consentimento por da",
-            "LOCADORA. 10) Sao obrigacoes do(a) LOCATARIO(A),",
-            "bem como do(s) motoristas indicados pelo LOCATARIO.",
-            "a) conduzir o veiculo locado durante a locacao, munido da",
-            "documentacao legal correspondente, e expedida pelas",
-            "autoridades competentes, que o autorizem a conduzir o",
-            "veiculo locado;",
-            "b) nao fazendo uso do veiculo para fins lucrativo;",
-        ]
+        clause_style = RLParagraphStyle(
+            "ClauseText", fontName="Helvetica", fontSize=6,
+            leading=7.5, alignment=TA_JUSTIFY, spaceBefore=0, spaceAfter=2,
+        )
+        clause_bold = RLParagraphStyle(
+            "ClauseBold", fontName="Helvetica-Bold", fontSize=7,
+            leading=9, alignment=TA_C, spaceBefore=0, spaceAfter=0,
+        )
 
-        for line in clausulas_col1:
-            c.drawString(col1_x, ty, line)
-            ty -= 8
+        clausulas_col1_text = (
+            "Carroceria, com hodometro instalado pelo fabricante, "
+            "lacrado, em boas condicoes de utilizacao, encontra-se o veiculo locado;\n\n"
+            "<b>1)</b> caracterizado no anverso deste documento, nos quadros "
+            "respectivos, O(A) LOCATARIO(A) recebe e aceita com plenos conhecimentos "
+            "o referido veiculo e respectivos acessorios, conforme relacao em anexo e "
+            "se obriga a indenizar totalmente a LOCADORA no momento de entrega do "
+            "veiculo, pelos acessorios eventualmente faltante, ao preco vigente no mercado.\n\n"
+            "<b>2)</b> O preco de aluguel do veiculo locado sera declarado no anverso deste "
+            "contrato calculado com base na tabela de tarifas da LOCADORA da qual o "
+            "LOCATARIO (A) tem pleno conhecimento. Ficara ao(s) cargo(s) do(a) "
+            "LOCATARIO(A) deste contrato; b) uma vez efetuada a devolucao do veiculo "
+            "locado a LOCADORA, estabelecera o valor do aluguel, nos termos do presente "
+            "contrato, precedendo ao desconto da quantia ja paga a titulo de adiantamento, "
+            "devendo o(a) LOCATARIO(A) efetuar a LOCADORA o pagamento da diferenca "
+            "resultante; c) por ocasiao da devolucao do veiculo, o(a) LOCATARIO(A) se "
+            "compromete a pagar a LOCADORA O imposto sobre servicos incidentes sobre o "
+            "custo total do aluguel e das tarifas adicionais; d) na falta de pagamento pontual "
+            "dos servicos prestados ao LOCATARIO(A), ficara este(a) sujeito(a) ao pagamento "
+            "de multa equivalente a 20% (vinte por cento) sobre o valor devido, acrescido de "
+            "juros de 25% (vinte e cinco por cento) ao mes.\n\n"
+            "<b>3)</b> O prazo de vigencia do presente contrato esta indicado no quadro "
+            "respectivo, devendo o(a) LOCATARIO(A) efetuar a devolucao do veiculo no dia, "
+            "hora e local estipulado, e somente podera ser prorrogado com anuencia da "
+            "LOCADORA, por escrito no anverso do presente contrato.\n\n"
+            "<b>4)</b> Findo o prazo contratual devera o(a) LOCATARIO(A) restituir o veiculo a "
+            "LOCADORA, no mesmo estado em que recebeu, excluindo-se apenas o desgaste "
+            "normal dos pneumaticos.\n\n"
+            "<b>5)</b> A nao devolucao do veiculo locado por parte do(a) LOCATARIO(A), "
+            "implicara na pratica de apropriacao indebita, ficando o(a) mesmo(a) sujeito(a) "
+            "as leis penais, podendo a LOCADORA promover contra o(a) LOCATARIO(A) a "
+            "competente representacao junto as autoridades policiais, para abertura de "
+            "inquerito policial, bem como a retomada do veiculo locado.\n\n"
+            "<b>6)</b> Todas e quaisquer despesas que se fizerem necessarias, para a retomada "
+            "e posse do veiculo locado, inclusive judiciais e extrajudiciais, bem como aquelas "
+            "decorrentes de transporte e remocao do mesmo. Correcao por conta exclusiva "
+            "do(a) LOCATARIO(A).\n\n"
+            "<b>7)</b> A LOCADORA podera propor contra o(a) LOCATARIO(A) as competentes "
+            "acoes civeis que se fizerem necessarias.\n\n"
+            "<b>8)</b> O veiculo locado destinar-se-a unico e exclusivo ao transporte de pessoas "
+            "e a referido veiculo so podera ser conduzido pelo(a) LOCATARIO(A), ou, sob sua "
+            "responsabilidade, pelo motorista ou motoristas por ele indicados, desde que estejam "
+            "qualificados no anverso deste mesmo contrato.\n\n"
+            "<b>9)</b> O(A) LOCATARIO(A) se obriga nao utilizar o veiculo locado em outro "
+            "Estado sem o consentimento por da LOCADORA.\n\n"
+            "<b>10)</b> Sao obrigacoes do(a) LOCATARIO(A), bem como do(s) motoristas "
+            "indicados pelo LOCATARIO:\n"
+            "a) conduzir o veiculo locado durante a locacao, munido da documentacao legal "
+            "correspondente, e expedida pelas autoridades competentes, que o autorizem a "
+            "conduzir o veiculo locado;\n"
+            "b) nao fazendo uso do veiculo para fins lucrativo;"
+        )
 
-        clausulas_col2 = [
-            "c) nao sub-locar o veiculo;",
-            "d) obedecer as leis de transito, Federal, Estadual e",
-            "I) o pagamento das multas Impostas por quaisquer",
-            "transgressoes a regulamentacao de transito ou qualquer",
-            "outra regulamentacao (autorizando a locadora a debitar em",
-            "cartao de credito); e ou emitir duplicata;",
-            "m) responder por todos os atos licitos efetuados com veiculo",
-            "no interior do mesmo;",
-            "n) reembolsar a LOCADORA os correspondentes aos",
-            "combustiveis faltante no caso do veiculo locado ser",
-            "devolvido com menor quantidade de combustivel que havia",
-            "no momento da entrega do veiculo a o(a) LOCATARIO(A).",
-            "11) No caso de acidente ou desaparecimento do veiculo",
-            "locado, durante o prazo de vigencia do presente contrato,",
-            "o(a) LOCATARIO(A), se obriga a comunicar imediatamente",
-            "o evento as AUTORIDADES competentes, apresentando o",
-            "comprovante deste comunicado a LOCADORA, sob pena",
-            "de ser responsabilizado(a) pelo abandono do veiculo, e:",
-            "a) no caso de acidente ou qualquer outro incidente que",
-            "venha a ser atribuido ao LOCATARIO(A), como",
-            "consequencia do nao cumprimento das disposicoes",
-            "contidas neste contrato o(a) LOCATARIO(A) reembolsara a",
-            "LOCADORA o aluguel correspondente ao periodo em que,",
-            "uma vez ultrapassado o prazo de locacao, o veiculo locado",
-            "nao se encontre a disposicao da LOCADORA, bem como",
-            "multa equivalente a 20% (vinte por sobre o valor devido,",
-            "acrescido de juros de 25% (vinte e cinco por cento) ao mes.",
-            "12) Se durante o prazo de locacao, ocorrer algum defeito no",
-            "marcador de quilometragem (hodometro) o(a)",
-            "LOCATARIO(A) se compromete a avisar de imediato a",
-            "LOCADORA, para que se proceda ao conserto do referido",
-            "defeito; neste caso fica, desde ja estabelecido entre as",
-            "partes que a tarifa de quilometragem sera calculada com",
-            "base na media de 1.000 (hum mil quilometros por dia).",
-            "13) A LOCADORA nao se responsabiliza pelos objetos",
-            "pessoais esquecidos pelo(a) LOCATARIO(A) ou seus",
-            "passageiros no Interior do veiculo ou em seus",
-            "estabelecimentos, nem pelos danos ou depreciacao",
-            "sofrida por objetos transportados em seus veiculos.",
-            "14) Este contrato se encerra:",
-            "a) por haver expirado o prazo fixado no mesmo;",
-            "b) por acordo expresso entre as partes;",
-            "c) por rescisao;",
-            "d) por perdas, danos ou defeitos desconhecidos que",
-            "Inutilizem o veiculo aludido, ou pela destruicao do mesmo;",
-            "e) por morte do(a) LOCATARIO(A).",
-            "15) Dar-se-a a rescisao deste contrato, na hipotese do nao",
-            "cumprimento por parte do(a) LOCATARIO(A) das",
-            "obrigacoes pactuadas neste instrumento.",
-        ]
+        p1 = RLParagraph(clausulas_col1_text, clause_style)
+        pw1, ph1 = p1.wrap(col_w, h - 2 * margin - 60)
+        p1.drawOn(c, col1_x, ty - ph1)
+        ty_bottom_col1 = ty - ph1
+
+        clausulas_col2_text = (
+            "c) nao sub-locar o veiculo;\n"
+            "d) obedecer as leis de transito, Federal, Estadual e Municipal;\n"
+            "I) o pagamento das multas Impostas por quaisquer transgressoes a "
+            "regulamentacao de transito ou qualquer outra regulamentacao (autorizando "
+            "a locadora a debitar em cartao de credito); e ou emitir duplicata;\n"
+            "m) responder por todos os atos licitos efetuados com veiculo no interior do mesmo;\n"
+            "n) reembolsar a LOCADORA os correspondentes aos combustiveis faltante no "
+            "caso do veiculo locado ser devolvido com menor quantidade de combustivel que "
+            "havia no momento da entrega do veiculo a o(a) LOCATARIO(A).\n\n"
+            "<b>11)</b> No caso de acidente ou desaparecimento do veiculo locado, durante o "
+            "prazo de vigencia do presente contrato, o(a) LOCATARIO(A), se obriga a comunicar "
+            "imediatamente o evento as AUTORIDADES competentes, apresentando o comprovante "
+            "deste comunicado a LOCADORA, sob pena de ser responsabilizado(a) pelo abandono "
+            "do veiculo, e:\n"
+            "a) no caso de acidente ou qualquer outro incidente que venha a ser atribuido ao "
+            "LOCATARIO(A), como consequencia do nao cumprimento das disposicoes contidas "
+            "neste contrato o(a) LOCATARIO(A) reembolsara a LOCADORA o aluguel correspondente "
+            "ao periodo em que, uma vez ultrapassado o prazo de locacao, o veiculo locado nao se "
+            "encontre a disposicao da LOCADORA, bem como multa equivalente a 20% (vinte por "
+            "sobre o valor devido, acrescido de juros de 25% (vinte e cinco por cento) ao mes.\n\n"
+            "<b>12)</b> Se durante o prazo de locacao, ocorrer algum defeito no marcador de "
+            "quilometragem (hodometro) o(a) LOCATARIO(A) se compromete a avisar de imediato "
+            "a LOCADORA, para que se proceda ao conserto do referido defeito; neste caso fica, "
+            "desde ja estabelecido entre as partes que a tarifa de quilometragem sera calculada "
+            "com base na media de 1.000 (hum mil quilometros por dia).\n\n"
+            "<b>13)</b> A LOCADORA nao se responsabiliza pelos objetos pessoais esquecidos "
+            "pelo(a) LOCATARIO(A) ou seus passageiros no Interior do veiculo ou em seus "
+            "estabelecimentos, nem pelos danos ou depreciacao sofrida por objetos transportados "
+            "em seus veiculos.\n\n"
+            "<b>14)</b> Este contrato se encerra:\n"
+            "a) por haver expirado o prazo fixado no mesmo;\n"
+            "b) por acordo expresso entre as partes;\n"
+            "c) por rescisao;\n"
+            "d) por perdas, danos ou defeitos desconhecidos que Inutilizem o veiculo aludido, "
+            "ou pela destruicao do mesmo;\n"
+            "e) por morte do(a) LOCATARIO(A).\n\n"
+            "<b>15)</b> Dar-se-a a rescisao deste contrato, na hipotese do nao cumprimento por "
+            "parte do(a) LOCATARIO(A) das obrigacoes pactuadas neste instrumento."
+        )
 
         ry2 = h - margin
-        for line in clausulas_col2:
-            c.drawString(col2_x, ry2, line)
-            ry2 -= 8
+        p2 = RLParagraph(clausulas_col2_text, clause_style)
+        pw2, ph2 = p2.wrap(col_w, h - 2 * margin - 60)
+        p2.drawOn(c, col2_x, ry2 - ph2)
+        ty_bottom_col2 = ry2 - ph2
 
         # Signatures at bottom
-        sig_y = min(ty, ry2) - 30
-        if sig_y < 120:
-            sig_y = 120
+        sig_y = min(ty_bottom_col1, ty_bottom_col2) - 20
+        if sig_y < 100:
+            sig_y = 100
 
         c.setLineWidth(0.5)
-        # Left signatures
-        c.line(col1_x, sig_y, col1_x + 180, sig_y)
-        c.setFont("Helvetica-Bold", 7)
-        c.drawString(col1_x, sig_y - 10, "LOCATARIO")
+        sig_line_w = col_w - 10
 
-        c.line(col1_x, sig_y - 30, col1_x + 180, sig_y - 30)
-        c.drawString(col1_x, sig_y - 40, "LOCADORA")
+        # Left signatures
+        c.line(col1_x, sig_y, col1_x + sig_line_w, sig_y)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawCentredString(col1_x + sig_line_w / 2, sig_y - 10, "LOCATARIO")
+
+        c.line(col1_x, sig_y - 30, col1_x + sig_line_w, sig_y - 30)
+        c.drawCentredString(col1_x + sig_line_w / 2, sig_y - 40, "LOCADORA")
 
         # Right signatures
-        c.line(col2_x, sig_y, col2_x + 180, sig_y)
-        c.drawString(col2_x, sig_y - 10, "TESTEMUNHA 1")
+        c.line(col2_x, sig_y, col2_x + sig_line_w, sig_y)
+        c.drawCentredString(col2_x + sig_line_w / 2, sig_y - 10, "TESTEMUNHA 1")
 
-        c.line(col2_x, sig_y - 30, col2_x + 180, sig_y - 30)
-        c.drawString(col2_x, sig_y - 40, "TESTEMUNHA 2")
+        c.line(col2_x, sig_y - 30, col2_x + sig_line_w, sig_y - 30)
+        c.drawCentredString(col2_x + sig_line_w / 2, sig_y - 40, "TESTEMUNHA 2")
 
         c.save()
         buffer.seek(0)
