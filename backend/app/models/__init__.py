@@ -253,6 +253,7 @@ class ParcelaSeguro(Base):
     vencimento = Column(Date)
     data_pagamento = Column(Date)
     status = Column(String, default="pendente")
+    seguro = relationship("Seguro", foreign_keys=[seguro_id], lazy="select")
 
 
 class IpvaAliquota(Base):

@@ -161,7 +161,7 @@ class PDFFinanceiroService:
         ipva_registros = db.query(IpvaRegistro).filter(
             IpvaRegistro.data_pagamento >= data_inicio_dt,
             IpvaRegistro.data_pagamento <= data_fim_dt
-        ).with_entities(IpvaRegistro.valor).all()
+        ).with_entities(IpvaRegistro.valor_ipva).all()
 
         multas = db.query(Multa).filter(
             Multa.data_pagamento >= data_inicio_dt,
@@ -313,8 +313,8 @@ class PDFFinanceiroService:
 
             dados.append({
                 'veiculo': veiculo_info,
-                'estado': ipva.estado or "N/A",
-                'valor': ipva.valor or Decimal('0'),
+                'ano_ref': str(ipva.ano_referencia or "N/A"),
+                'valor': ipva.valor_ipva or Decimal('0'),
                 'data_pagamento': PDFFinanceiroService._format_date(ipva.data_pagamento)
             })
 
@@ -621,7 +621,7 @@ class PDFFinanceiroService:
         elements.extend(PDFFinanceiroService._create_despesas_section(
             "",
             despesas_ipva,
-            ["Veículo", "Estado", "Valor", "Data Pagamento"]
+            ["Veículo", "Ano Ref", "Valor", "Data Pagamento"]
         ))
 
         # 3.5 - Multas

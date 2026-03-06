@@ -793,8 +793,8 @@ class ExportacaoService:
 
             row = [
                 veiculo_info,
-                registro.estado or "",
-                ExportacaoService._format_currency(registro.valor or 0),
+                str(registro.ano_referencia or ""),
+                ExportacaoService._format_currency(registro.valor_ipva or 0),
                 ExportacaoService._format_date(registro.data_pagamento),
             ]
             rows.append(row)

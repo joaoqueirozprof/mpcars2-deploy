@@ -298,8 +298,8 @@ class PDFNFService:
         table_style = [
             ("BACKGROUND", (0, 0), (-1, 0), PDFNFService.HEADER_COLOR),
             ("TEXTCOLOR", (0, 0), (-1, 0), white),
-            ("ALIGN", (0, 0), (-1, -1), TA_LEFT),
-            ("ALIGN", (3, 0), (3, -1), TA_RIGHT),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("ALIGN", (3, 0), (3, -1), "RIGHT"),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, 0), 10),
             ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
@@ -340,8 +340,8 @@ class PDFNFService:
         table = Table(data, colWidths=colWidths)
 
         table_style = [
-            ("ALIGN", (0, 0), (0, -1), TA_LEFT),
-            ("ALIGN", (1, 0), (1, -1), TA_RIGHT),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
             ("FONTNAME", (0, 0), (-1, 1), "Helvetica"),
             ("FONTSIZE", (0, 0), (-1, 1), 10),
             ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
@@ -416,7 +416,7 @@ class PDFNFService:
         return TableStyle([
             ("BACKGROUND", (0, 0), (0, -1), PDFNFService.HEADER_COLOR),
             ("TEXTCOLOR", (0, 0), (0, -1), white),
-            ("ALIGN", (0, 0), (-1, -1), TA_LEFT),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 10),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
