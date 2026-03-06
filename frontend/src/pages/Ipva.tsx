@@ -1,22 +1,25 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Plus, Edit, Trash2, FileText, X } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
+import toast from 'react-hot-toast'
 import AppLayout from '@/components/layout/AppLayout'
 import DataTable from '@/components/shared/DataTable'
-import StatusBadge from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import StatusBadge from '@/components/shared/StatusBadge'
 import { IPVA, Veiculo, PaginatedResponse, PaginationParams } from '@/types'
 import { formatCurrency, formatDate, isExpired } from '@/lib/utils'
-import toast from 'react-hot-toast'
 
 const Ipva: React.FC = () => {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, limit: 10 })
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingIPVA, setEditingIPVA] = useState<IPVA | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string }>({ isOpen: false })
   const [statusFilter, setStatusFilter] = useState<string>('todos')
+  const [vehicleFilter, setVehicleFilter] = useState<string>('')
   const [formData, setFormData] = useState({
     veiculo_id: '',
     ano: new Date().getFullYear(),
@@ -27,13 +30,14 @@ const Ipva: React.FC = () => {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['ipva', pagination, statusFilter],
+    queryKey: ['ipva', pagination, statusFilter, vehicleFilter],
     queryFn: async () => {
       const { data } = await api.get<PaginatedResponse<any>>('/ipva', {
         params: {
           page: pagination.page,
           limit: pagination.limit,
           status: statusFilter !== 'todos' ? statusFilter : undefined,
+          veiculo_id: vehicleFilter || undefined,
         },
       })
       return data
@@ -49,7 +53,7 @@ const Ipva: React.FC = () => {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post('/ipva', data),
+    mutationFn: (formData: any) => api.post('/ipva', formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ipva'] })
       setIsModalOpen(false)
@@ -62,7 +66,7 @@ const Ipva: React.FC = () => {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: any) => api.patch(`/ipva/${editingIPVA?.id}`, data),
+    mutationFn: (formData: any) => api.patch(`/ipva/${editingIPVA?.id}`, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ipva'] })
       setIsModalOpen(false)
@@ -123,22 +127,67 @@ const Ipva: React.FC = () => {
     }
   }
 
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status)
+    setPagination({ ...pagination, page: 1 })
+  }
+
   const columns = [
-    { key: 'ano' as const, label: 'Ano', sortable: true, width: '10%' },
-    { key: 'veiculo_id' as const, label: 'Veículo', render: (_: any, row: any) => row.veiculo?.placa || '-' },
-    { key: 'valor' as const, label: 'Valor', render: (value: number) => formatCurrency(value) },
-    { key: 'data_vencimento' as const, label: 'Vencimento', render: (date: string) => formatDate(date) },
-    { key: 'data_pagamento' as const, label: 'Pagamento', render: (date: string) => date ? formatDate(date) : '-' },
-    { key: 'status' as const, label: 'Status', render: (status: string) => <StatusBadge status={status} /> },
+    {
+      key: 'ano' as const,
+      label: 'Ano',
+      sortable: true,
+      width: '10%',
+      render: (ano: number) => <span className="font-semibold text-slate-900">{ano}</span>,
+    },
+    {
+      key: 'veiculo_id' as const,
+      label: 'Veículo',
+      render: (_: any, row: any) => <span className="text-slate-900">{row.veiculo?.placa || '-'}</span>,
+    },
+    {
+      key: 'valor' as const,
+      label: 'Valor',
+      render: (value: number) => <span className="font-semibold text-slate-900">{formatCurrency(value)}</span>,
+    },
+    {
+      key: 'data_vencimento' as const,
+      label: 'Vencimento',
+      render: (date: string) => <span className="text-slate-700">{formatDate(date)}</span>,
+    },
+    {
+      key: 'data_pagamento' as const,
+      label: 'Data Pagamento',
+      render: (date: string) => <span className="text-slate-700">{date ? formatDate(date) : '-'}</span>,
+    },
+    {
+      key: 'status' as const,
+      label: 'Status',
+      render: (status: string) => (
+        <div className="flex items-center gap-1">
+          {status === 'pago' && <span className="badge-success">Pago</span>}
+          {status === 'pendente' && <span className="badge-warning">Pendente</span>}
+          {status === 'vencido' && <span className="badge-danger">Vencido</span>}
+        </div>
+      ),
+    },
     {
       key: 'id' as const,
       label: 'Ações',
       render: (_: any, row: IPVA) => (
         <div className="flex items-center gap-2">
-          <button onClick={() => handleOpenModal(row)} className="p-2 text-slate-600 hover:text-primary">
+          <button
+            onClick={() => handleOpenModal(row)}
+            className="btn-icon p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            title="Editar"
+          >
             <Edit size={16} />
           </button>
-          <button onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })} className="p-2 text-slate-600 hover:text-danger">
+          <button
+            onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })}
+            className="btn-icon p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Deletar"
+          >
             <Trash2 size={16} />
           </button>
         </div>
@@ -146,62 +195,105 @@ const Ipva: React.FC = () => {
     },
   ]
 
+  const isLoaded = !isLoading && data?.data
+  const isEmpty = isLoaded && data.data.length === 0
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">IPVA</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento de IPVA dos veículos</p>
+            <h1 className="page-title flex items-center gap-2">
+              <FileText className="text-orange-600" size={32} />
+              IPVA
+            </h1>
+            <p className="page-subtitle">Gerenciamento de IPVA dos veículos por ano fiscal</p>
           </div>
-          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2">
+          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2 whitespace-nowrap">
             <Plus size={20} />
             Novo IPVA
           </button>
         </div>
 
-        <div className="flex gap-2">
-          {['todos', 'pendente', 'pago', 'vencido'].map((status) => (
-            <button
-              key={status}
-              onClick={() => {
-                setStatusFilter(status)
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex gap-2 flex-wrap">
+            {['todos', 'pendente', 'pago', 'vencido'].map((status) => (
+              <button
+                key={status}
+                onClick={() => handleStatusFilter(status)}
+                className={`filter-tab ${statusFilter === status ? 'filter-tab-active' : 'filter-tab-inactive'}`}
+              >
+                {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1">
+            <select
+              value={vehicleFilter}
+              onChange={(e) => {
+                setVehicleFilter(e.target.value)
                 setPagination({ ...pagination, page: 1 })
               }}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === status ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+              className="input-field w-full"
             >
-              {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1)}
-            </button>
-          ))}
+              <option value="">Filtrar por veículo...</option>
+              {veiculos?.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.placa} - {v.marca} {v.modelo}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="card">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: data?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
+          {isEmpty ? (
+            <div className="empty-state py-12">
+              <div className="empty-state-icon bg-orange-50 mb-4">
+                <FileText className="text-orange-600" size={40} />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Nenhum IPVA encontrado</h3>
+              <p className="text-slate-600 mb-4">Comece registrando o IPVA do primeiro veículo</p>
+              <button onClick={() => handleOpenModal()} className="btn-primary">
+                <Plus size={20} className="inline mr-2" />
+                Novo IPVA
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={data?.data || []}
+              isLoading={isLoading}
+              pagination={{
+                page: pagination.page,
+                limit: pagination.limit,
+                total: data?.total || 0,
+                onPageChange: (page) => setPagination({ ...pagination, page }),
+              }}
+            />
+          )}
         </div>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingIPVA ? 'Editar IPVA' : 'Novo IPVA'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-display font-bold text-slate-900">
+                {editingIPVA ? 'Editar IPVA' : 'Novo IPVA'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded transition-colors"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Veículo *</label>
+                <label className="input-label">Veículo *</label>
                 <select
                   value={formData.veiculo_id}
                   onChange={(e) => setFormData({ ...formData, veiculo_id: e.target.value })}
@@ -218,7 +310,7 @@ const Ipva: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Ano *</label>
+                <label className="input-label">Ano Fiscal *</label>
                 <input
                   type="number"
                   value={formData.ano}
@@ -231,7 +323,7 @@ const Ipva: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Valor *</label>
+                <label className="input-label">Valor *</label>
                 <input
                   type="number"
                   value={formData.valor}
@@ -239,12 +331,13 @@ const Ipva: React.FC = () => {
                   step="0.01"
                   min="0"
                   className="input-field"
+                  placeholder="0,00"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Data Vencimento *</label>
+                <label className="input-label">Data Vencimento *</label>
                 <input
                   type="date"
                   value={formData.data_vencimento}
@@ -255,7 +348,7 @@ const Ipva: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Data Pagamento</label>
+                <label className="input-label">Data Pagamento</label>
                 <input
                   type="date"
                   value={formData.data_pagamento}
@@ -266,7 +359,7 @@ const Ipva: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
+                <label className="input-label">Status</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
@@ -280,11 +373,20 @@ const Ipva: React.FC = () => {
               </div>
 
               <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={createMutation.isPending || updateMutation.isPending}>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingIPVA ? 'Atualizar' : 'Criar'} IPVA
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {createMutation.isPending || updateMutation.isPending ? 'Processando...' : editingIPVA ? 'Atualizar' : 'Criar'} IPVA
                 </button>
               </div>
             </form>

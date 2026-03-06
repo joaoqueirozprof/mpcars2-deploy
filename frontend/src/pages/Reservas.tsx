@@ -1,16 +1,18 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Calendar, X } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
+import toast from 'react-hot-toast'
 import AppLayout from '@/components/layout/AppLayout'
 import DataTable from '@/components/shared/DataTable'
-import StatusBadge from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import StatusBadge from '@/components/shared/StatusBadge'
 import { Reserva, Cliente, Veiculo, PaginatedResponse, PaginationParams } from '@/types'
-import { formatDate } from '@/lib/utils'
-import toast from 'react-hot-toast'
+import { formatDate, calculateDays } from '@/lib/utils'
 
 const Reservas: React.FC = () => {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, limit: 10 })
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -57,7 +59,7 @@ const Reservas: React.FC = () => {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post('/reservas', data),
+    mutationFn: (formData: any) => api.post('/reservas', formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservas'] })
       setIsModalOpen(false)
@@ -70,7 +72,7 @@ const Reservas: React.FC = () => {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: any) => api.patch(`/reservas/${editingReservation?.id}`, data),
+    mutationFn: (formData: any) => api.patch(`/reservas/${editingReservation?.id}`, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservas'] })
       setIsModalOpen(false)
@@ -124,6 +126,11 @@ const Reservas: React.FC = () => {
       return
     }
 
+    if (new Date(formData.data_fim) <= new Date(formData.data_inicio)) {
+      toast.error('Data fim deve ser posterior à data início')
+      return
+    }
+
     if (editingReservation) {
       updateMutation.mutate(formData)
     } else {
@@ -131,21 +138,69 @@ const Reservas: React.FC = () => {
     }
   }
 
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status)
+    setPagination({ ...pagination, page: 1 })
+  }
+
   const columns = [
-    { key: 'cliente_id' as const, label: 'Cliente', render: (_: any, row: any) => row.cliente?.nome || '-' },
-    { key: 'veiculo_id' as const, label: 'Veículo', render: (_: any, row: any) => row.veiculo?.placa || '-' },
-    { key: 'data_inicio' as const, label: 'Início', render: (date: string) => formatDate(date) },
-    { key: 'data_fim' as const, label: 'Fim', render: (date: string) => formatDate(date) },
-    { key: 'status' as const, label: 'Status', render: (status: string) => <StatusBadge status={status} /> },
+    {
+      key: 'cliente_id' as const,
+      label: 'Cliente',
+      render: (_: any, row: any) => <span className="text-slate-900 font-medium">{row.cliente?.nome || '-'}</span>,
+    },
+    {
+      key: 'veiculo_id' as const,
+      label: 'Veículo',
+      render: (_: any, row: any) => <span className="text-slate-900">{row.veiculo?.placa || '-'}</span>,
+    },
+    {
+      key: 'data_inicio' as const,
+      label: 'Data Início',
+      render: (date: string) => <span className="text-slate-700">{formatDate(date)}</span>,
+    },
+    {
+      key: 'data_fim' as const,
+      label: 'Data Fim',
+      render: (date: string) => <span className="text-slate-700">{formatDate(date)}</span>,
+    },
     {
       key: 'id' as const,
+      label: 'Período (dias)',
+      render: (_: any, row: any) => {
+        if (!row.data_inicio || !row.data_fim) return '-'
+        const days = calculateDays(row.data_inicio, row.data_fim)
+        return <span className="font-semibold text-slate-900">{days}d</span>
+      },
+    },
+    {
+      key: 'status' as const,
+      label: 'Status',
+      render: (status: string) => (
+        <div className="flex items-center gap-1">
+          {status === 'ativa' && <span className="badge-info text-xs px-2 py-1">Ativa</span>}
+          {status === 'cancelada' && <span className="badge-danger text-xs px-2 py-1">Cancelada</span>}
+          {status === 'convertida' && <span className="badge-success text-xs px-2 py-1">Convertida</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'id_action' as const,
       label: 'Ações',
       render: (_: any, row: Reserva) => (
         <div className="flex items-center gap-2">
-          <button onClick={() => handleOpenModal(row)} className="p-2 text-slate-600 hover:text-primary">
+          <button
+            onClick={() => handleOpenModal(row)}
+            className="btn-icon p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            title="Editar"
+          >
             <Edit size={16} />
           </button>
-          <button onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })} className="p-2 text-slate-600 hover:text-danger">
+          <button
+            onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })}
+            className="btn-icon p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Deletar"
+          >
             <Trash2 size={16} />
           </button>
         </div>
@@ -153,62 +208,86 @@ const Reservas: React.FC = () => {
     },
   ]
 
+  const isLoaded = !isLoading && data?.data
+  const isEmpty = isLoaded && data.data.length === 0
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">Reservas</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento de reservas de veículos</p>
+            <h1 className="page-title flex items-center gap-2">
+              <Calendar className="text-cyan-600" size={32} />
+              Reservas
+            </h1>
+            <p className="page-subtitle">Gerenciamento de reservas de veículos com períodos definidos</p>
           </div>
-          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2">
+          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2 whitespace-nowrap">
             <Plus size={20} />
             Nova Reserva
           </button>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {['todos', 'ativa', 'cancelada', 'convertida'].map((status) => (
             <button
               key={status}
-              onClick={() => {
-                setStatusFilter(status)
-                setPagination({ ...pagination, page: 1 })
-              }}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === status ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+              onClick={() => handleStatusFilter(status)}
+              className={`filter-tab ${statusFilter === status ? 'filter-tab-active' : 'filter-tab-inactive'}`}
             >
-              {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1)}
+              {status === 'todos' ? 'Todas' : status === 'ativa' ? 'Ativas' : status === 'cancelada' ? 'Canceladas' : 'Convertidas'}
             </button>
           ))}
         </div>
 
         <div className="card">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: data?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
+          {isEmpty ? (
+            <div className="empty-state py-12">
+              <div className="empty-state-icon bg-cyan-50 mb-4">
+                <Calendar className="text-cyan-600" size={40} />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Nenhuma reserva encontrada</h3>
+              <p className="text-slate-600 mb-4">Comece criando a primeira reserva para seus clientes</p>
+              <button onClick={() => handleOpenModal()} className="btn-primary">
+                <Plus size={20} className="inline mr-2" />
+                Nova Reserva
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={data?.data || []}
+              isLoading={isLoading}
+              pagination={{
+                page: pagination.page,
+                limit: pagination.limit,
+                total: data?.total || 0,
+                onPageChange: (page) => setPagination({ ...pagination, page }),
+              }}
+            />
+          )}
         </div>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingReservation ? 'Editar Reserva' : 'Nova Reserva'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-display font-bold text-slate-900">
+                {editingReservation ? 'Editar Reserva' : 'Nova Reserva'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded transition-colors"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Cliente *</label>
+                <label className="input-label">Cliente *</label>
                 <select
                   value={formData.cliente_id}
                   onChange={(e) => setFormData({ ...formData, cliente_id: e.target.value })}
@@ -225,7 +304,7 @@ const Reservas: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Veículo *</label>
+                <label className="input-label">Veículo *</label>
                 <select
                   value={formData.veiculo_id}
                   onChange={(e) => setFormData({ ...formData, veiculo_id: e.target.value })}
@@ -243,7 +322,7 @@ const Reservas: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Data Início *</label>
+                  <label className="input-label">Data Início *</label>
                   <input
                     type="date"
                     value={formData.data_inicio}
@@ -254,7 +333,7 @@ const Reservas: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Data Fim *</label>
+                  <label className="input-label">Data Fim *</label>
                   <input
                     type="date"
                     value={formData.data_fim}
@@ -265,8 +344,16 @@ const Reservas: React.FC = () => {
                 </div>
               </div>
 
+              {formData.data_inicio && formData.data_fim && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-900">
+                    Período: <span className="font-semibold">{calculateDays(formData.data_inicio, formData.data_fim)} dias</span>
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
+                <label className="input-label">Status</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
@@ -280,22 +367,32 @@ const Reservas: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Observações</label>
+                <label className="input-label">Observações</label>
                 <textarea
                   value={formData.observacoes}
                   onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
                   className="input-field"
                   rows={3}
+                  placeholder="Observações sobre a reserva"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
               <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={createMutation.isPending || updateMutation.isPending}>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingReservation ? 'Atualizar' : 'Criar'} Reserva
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {createMutation.isPending || updateMutation.isPending ? 'Processando...' : editingReservation ? 'Atualizar' : 'Criar'} Reserva
                 </button>
               </div>
             </form>

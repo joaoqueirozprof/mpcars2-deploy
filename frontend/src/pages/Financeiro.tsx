@@ -1,13 +1,50 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, TrendingUp, TrendingDown } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  Clock,
+  Check,
+  X,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
 import api from '@/services/api'
 import AppLayout from '@/components/layout/AppLayout'
-import DataTable from '@/components/shared/DataTable'
-import ConfirmDialog from '@/components/shared/ConfirmDialog'
-import { Financeiro, PaginatedResponse, PaginationParams } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import toast from 'react-hot-toast'
+
+interface Financeiro {
+  id: string
+  data: string
+  tipo: 'receita' | 'despesa'
+  categoria: string
+  descricao: string
+  valor: number
+  empresa_id: string
+  contrato_id?: string
+  veiculo_id?: string
+  comprovante_url?: string
+  status: 'pendente' | 'pago' | 'cancelado'
+}
+
+interface PaginatedResponse<T> {
+  data: T[]
+  total: number
+  page: number
+  limit: number
+}
+
+interface PaginationParams {
+  page: number
+  limit: number
+}
 
 const FinanceiroPage: React.FC = () => {
   const queryClient = useQueryClient()
@@ -15,7 +52,9 @@ const FinanceiroPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<Financeiro | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string }>({ isOpen: false })
-  const [typeFilter, setTypeFilter] = useState<string>('todos')
+  const [typeFilter, setTypeFilter] = useState<'todos' | 'receita' | 'despesa'>('todos')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'pago' | 'cancelado'>('todos')
+  const [searchTerm, setSearchTerm] = useState('')
   const [formData, setFormData] = useState({
     tipo: 'receita' as 'receita' | 'despesa',
     categoria: '',
@@ -26,13 +65,14 @@ const FinanceiroPage: React.FC = () => {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['financeiro', pagination, typeFilter],
+    queryKey: ['financeiro', pagination, typeFilter, statusFilter],
     queryFn: async () => {
       const { data } = await api.get<PaginatedResponse<Financeiro>>('/financeiro', {
         params: {
           page: pagination.page,
           limit: pagination.limit,
           tipo: typeFilter !== 'todos' ? typeFilter : undefined,
+          status: statusFilter !== 'todos' ? statusFilter : undefined,
         },
       })
       return data
@@ -114,48 +154,78 @@ const FinanceiroPage: React.FC = () => {
     }
   }
 
-  const totalReceita = data?.data.filter((r) => r.tipo === 'receita').reduce((sum, r) => sum + r.valor, 0) || 0
-  const totalDespesa = data?.data.filter((r) => r.tipo === 'despesa').reduce((sum, r) => sum + r.valor, 0) || 0
-  const saldo = totalReceita - totalDespesa
+  const records = data?.data || []
 
-  const columns = [
-    { key: 'data' as const, label: 'Data', sortable: true, render: (date: string) => formatDate(date) },
-    { key: 'tipo' as const, label: 'Tipo', render: (tipo: string) => <span className="badge badge-info">{tipo === 'receita' ? 'Receita' : 'Despesa'}</span> },
-    { key: 'categoria' as const, label: 'Categoria', sortable: true },
-    { key: 'descricao' as const, label: 'Descrição' },
-    {
-      key: 'valor' as const,
-      label: 'Valor',
-      render: (valor: number, row: Financeiro) => (
-        <span className={row.tipo === 'receita' ? 'text-success font-semibold' : 'text-danger font-semibold'}>
-          {row.tipo === 'receita' ? '+' : '-'} {formatCurrency(valor)}
-        </span>
-      ),
-    },
-    { key: 'status' as const, label: 'Status' },
-    {
-      key: 'id' as const,
-      label: 'Ações',
-      render: (_: any, row: Financeiro) => (
-        <div className="flex items-center gap-2">
-          <button onClick={() => handleOpenModal(row)} className="p-2 text-slate-600 hover:text-primary">
-            <Edit size={16} />
-          </button>
-          <button onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })} className="p-2 text-slate-600 hover:text-danger">
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ),
-    },
-  ]
+  const kpiData = useMemo(() => {
+    const totalReceita = records.filter((r) => r.tipo === 'receita').reduce((sum, r) => sum + r.valor, 0)
+    const totalDespesa = records.filter((r) => r.tipo === 'despesa').reduce((sum, r) => sum + r.valor, 0)
+    const saldo = totalReceita - totalDespesa
+    const pendentes = records.filter((r) => r.status === 'pendente').reduce((sum, r) => sum + r.valor, 0)
+
+    return { totalReceita, totalDespesa, saldo, pendentes }
+  }, [records])
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      if (searchTerm === '') return true
+      const searchLower = searchTerm.toLowerCase()
+      return (
+        record.descricao.toLowerCase().includes(searchLower) ||
+        record.categoria.toLowerCase().includes(searchLower) ||
+        record.id.toLowerCase().includes(searchLower)
+      )
+    })
+  }, [records, searchTerm])
+
+  const getStatusBadgeClass = (status: string): string => {
+    switch (status) {
+      case 'pago':
+        return 'badge-success'
+      case 'pendente':
+        return 'badge-warning'
+      case 'cancelado':
+        return 'badge-danger'
+      default:
+        return 'badge-success'
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pago':
+        return <Check size={16} />
+      case 'pendente':
+        return <Clock size={16} />
+      case 'cancelado':
+        return <X size={16} />
+      default:
+        return null
+    }
+  }
+
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case 'pago':
+        return 'Pago'
+      case 'pendente':
+        return 'Pendente'
+      case 'cancelado':
+        return 'Cancelado'
+      default:
+        return status
+    }
+  }
+
+  const totalPages = Math.ceil((data?.total || 0) / pagination.limit)
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">Financeiro</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento financeiro</p>
+        {/* Page Header */}
+        <div className="page-header">
+          <div className="flex-1">
+            <h1 className="page-title">Financeiro</h1>
+            <p className="page-subtitle">Gerencie receitas, despesas e saldo financeiro da sua empresa</p>
           </div>
           <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2">
             <Plus size={20} />
@@ -164,136 +234,430 @@ const FinanceiroPage: React.FC = () => {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="card">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-600 text-sm">Receita</p>
-                <p className="text-2xl font-display font-bold text-success mt-2">{formatCurrency(totalReceita)}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Receitas Card */}
+          <div className="kpi-card">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="kpi-label">Receitas</p>
+                <p className="kpi-value text-green-600">{formatCurrency(kpiData.totalReceita)}</p>
               </div>
-              <div className="bg-green-100 p-3 rounded-lg">
-                <TrendingUp className="text-success" size={24} />
+              <div className="kpi-icon bg-green-100 text-green-600">
+                <TrendingUp size={24} />
               </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-green-100">
+              <p className="text-xs text-slate-600">Total de receitas registradas</p>
             </div>
           </div>
 
-          <div className="card">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-600 text-sm">Despesa</p>
-                <p className="text-2xl font-display font-bold text-danger mt-2">{formatCurrency(totalDespesa)}</p>
+          {/* Despesas Card */}
+          <div className="kpi-card">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="kpi-label">Despesas</p>
+                <p className="kpi-value text-red-600">{formatCurrency(kpiData.totalDespesa)}</p>
               </div>
-              <div className="bg-red-100 p-3 rounded-lg">
-                <TrendingDown className="text-danger" size={24} />
+              <div className="kpi-icon bg-red-100 text-red-600">
+                <TrendingDown size={24} />
               </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-red-100">
+              <p className="text-xs text-slate-600">Total de despesas registradas</p>
             </div>
           </div>
 
-          <div className="card">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-600 text-sm">Saldo</p>
-                <p className={`text-2xl font-display font-bold mt-2 ${saldo >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(saldo)}</p>
+          {/* Saldo Card */}
+          <div className={`kpi-card ${kpiData.saldo >= 0 ? 'border-blue-200 bg-blue-50' : 'border-red-200 bg-red-50'}`}>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="kpi-label">Saldo</p>
+                <p className={`kpi-value ${kpiData.saldo >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                  {formatCurrency(kpiData.saldo)}
+                </p>
               </div>
-              <div className={`p-3 rounded-lg ${saldo >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                {saldo >= 0 ? <TrendingUp className="text-success" size={24} /> : <TrendingDown className="text-danger" size={24} />}
+              <div className={`kpi-icon ${kpiData.saldo >= 0 ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>
+                <DollarSign size={24} />
               </div>
+            </div>
+            <div className={`mt-3 pt-3 ${kpiData.saldo >= 0 ? 'border-t border-blue-100' : 'border-t border-red-100'}`}>
+              <p className="text-xs text-slate-600">Receitas menos despesas</p>
+            </div>
+          </div>
+
+          {/* Pendentes Card */}
+          <div className="kpi-card">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="kpi-label">Pendentes</p>
+                <p className="kpi-value text-amber-600">{formatCurrency(kpiData.pendentes)}</p>
+              </div>
+              <div className="kpi-icon bg-amber-100 text-amber-600">
+                <AlertCircle size={24} />
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-amber-100">
+              <p className="text-xs text-slate-600">Registros aguardando pagamento</p>
             </div>
           </div>
         </div>
 
-        {/* Type Filter */}
-        <div className="flex gap-2">
-          {['todos', 'receita', 'despesa'].map((type) => (
-            <button
-              key={type}
-              onClick={() => {
-                setTypeFilter(type)
-                setPagination({ ...pagination, page: 1 })
-              }}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                typeFilter === type ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {type === 'todos' ? 'Todos' : type === 'receita' ? 'Receitas' : 'Despesas'}
-            </button>
-          ))}
-        </div>
-
+        {/* Filters Section */}
         <div className="card">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: data?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
+          <div className="space-y-4">
+            {/* Type Filters */}
+            <div>
+              <p className="text-sm font-semibold text-slate-900 mb-3">Tipo de Transação</p>
+              <div className="flex gap-2 flex-wrap">
+                {['todos', 'receita', 'despesa'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => {
+                      setTypeFilter(type as any)
+                      setPagination({ ...pagination, page: 1 })
+                    }}
+                    className={
+                      typeFilter === type
+                        ? 'filter-tab filter-tab-active'
+                        : 'filter-tab filter-tab-inactive'
+                    }
+                  >
+                    {type === 'todos' ? 'Todos' : type === 'receita' ? 'Receitas' : 'Despesas'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Status Filters */}
+            <div className="border-t border-slate-200 pt-4">
+              <p className="text-sm font-semibold text-slate-900 mb-3">Status</p>
+              <div className="flex gap-2 flex-wrap">
+                {['todos', 'pendente', 'pago', 'cancelado'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      setStatusFilter(status as any)
+                      setPagination({ ...pagination, page: 1 })
+                    }}
+                    className={
+                      statusFilter === status
+                        ? 'filter-tab filter-tab-active'
+                        : 'filter-tab filter-tab-inactive'
+                    }
+                  >
+                    {status === 'todos'
+                      ? 'Todos'
+                      : status === 'pendente'
+                        ? 'Pendente'
+                        : status === 'pago'
+                          ? 'Pago'
+                          : 'Cancelado'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="border-t border-slate-200 pt-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="Buscar por descrição, categoria ou ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="input-field pl-10"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Table Section */}
+        <div className="card card-hover">
+          {isLoading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-16 bg-slate-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : filteredRecords.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <AlertCircle size={48} />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900">Nenhum registro encontrado</h3>
+              <p className="mt-2 text-slate-600">Crie um novo registro para começar a gerenciar suas finanças</p>
+              <button onClick={() => handleOpenModal()} className="btn-primary mt-4 flex items-center gap-2 mx-auto">
+                <Plus size={18} />
+                Novo Registro
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="table-header">
+                    <th className="text-left py-4 px-6 font-semibold text-slate-900">Data</th>
+                    <th className="text-left py-4 px-6 font-semibold text-slate-900">Tipo</th>
+                    <th className="text-left py-4 px-6 font-semibold text-slate-900">Categoria</th>
+                    <th className="text-left py-4 px-6 font-semibold text-slate-900">Descrição</th>
+                    <th className="text-right py-4 px-6 font-semibold text-slate-900">Valor</th>
+                    <th className="text-center py-4 px-6 font-semibold text-slate-900">Status</th>
+                    <th className="text-center py-4 px-6 font-semibold text-slate-900">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRecords.map((record) => (
+                    <tr key={record.id} className="table-row">
+                      <td className="table-cell text-slate-900 font-medium">{formatDate(record.data)}</td>
+                      <td className="table-cell">
+                        <span
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
+                            record.tipo === 'receita'
+                              ? 'badge-success'
+                              : 'badge-danger'
+                          }`}
+                        >
+                          {record.tipo === 'receita' ? 'Receita' : 'Despesa'}
+                        </span>
+                      </td>
+                      <td className="table-cell text-slate-700">{record.categoria}</td>
+                      <td className="table-cell text-slate-700">{record.descricao}</td>
+                      <td className="table-cell text-right">
+                        <span
+                          className={`font-semibold ${
+                            record.tipo === 'receita'
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}
+                        >
+                          {record.tipo === 'receita' ? '+' : '-'} {formatCurrency(record.valor)}
+                        </span>
+                      </td>
+                      <td className="table-cell text-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(
+                            record.status
+                          )}`}
+                        >
+                          {getStatusIcon(record.status)}
+                          {getStatusLabel(record.status)}
+                        </span>
+                      </td>
+                      <td className="table-cell text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleOpenModal(record)}
+                            className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ isOpen: true, id: record.id })}
+                            className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Deletar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {!isLoading && filteredRecords.length > 0 && (
+            <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200">
+              <p className="text-sm text-slate-600">
+                Mostrando <span className="font-semibold">{(pagination.page - 1) * pagination.limit + 1}</span> a{' '}
+                <span className="font-semibold">
+                  {Math.min(pagination.page * pagination.limit, data?.total || 0)}
+                </span>{' '}
+                de <span className="font-semibold">{data?.total || 0}</span> registros
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() =>
+                    setPagination({
+                      ...pagination,
+                      page: Math.max(1, pagination.page - 1),
+                    })
+                  }
+                  disabled={pagination.page === 1}
+                  className="btn-secondary p-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <div className="flex items-center gap-2">
+                  {[...Array(totalPages)].map((_, i) => {
+                    const pageNum = i + 1
+                    if (
+                      pageNum === 1 ||
+                      pageNum === totalPages ||
+                      (pageNum >= pagination.page - 1 && pageNum <= pagination.page + 1)
+                    ) {
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setPagination({ ...pagination, page: pageNum })}
+                          className={`w-10 h-10 rounded-lg font-medium transition-colors ${
+                            pageNum === pagination.page
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      )
+                    } else if (pageNum === pagination.page - 2 || pageNum === pagination.page + 2) {
+                      return (
+                        <span key={pageNum} className="text-slate-600">
+                          ...
+                        </span>
+                      )
+                    }
+                    return null
+                  })}
+                </div>
+                <button
+                  onClick={() =>
+                    setPagination({
+                      ...pagination,
+                      page: Math.min(totalPages, pagination.page + 1),
+                    })
+                  }
+                  disabled={pagination.page === totalPages}
+                  className="btn-secondary p-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Modal Form */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingRecord ? 'Editar Registro' : 'Novo Registro'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {editingRecord ? 'Editar Registro' : 'Novo Registro'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
+                <X size={24} />
+              </button>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Tipo - Radio Buttons */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Tipo *</label>
-                <select
-                  value={formData.tipo}
-                  onChange={(e) => setFormData({ ...formData, tipo: e.target.value as any })}
-                  className="input-field"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  <option value="receita">Receita</option>
-                  <option value="despesa">Despesa</option>
-                </select>
+                <label className="input-label">Tipo de Transação *</label>
+                <div className="flex gap-4 mt-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="receita"
+                      checked={formData.tipo === 'receita'}
+                      onChange={(e) => setFormData({ ...formData, tipo: e.target.value as any })}
+                      disabled={createMutation.isPending || updateMutation.isPending}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-slate-700 font-medium">Receita</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="despesa"
+                      checked={formData.tipo === 'despesa'}
+                      onChange={(e) => setFormData({ ...formData, tipo: e.target.value as any })}
+                      disabled={createMutation.isPending || updateMutation.isPending}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-slate-700 font-medium">Despesa</span>
+                  </label>
+                </div>
               </div>
 
+              {/* Categoria - Select */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Categoria *</label>
-                <input
-                  type="text"
+                <label htmlFor="categoria" className="input-label">
+                  Categoria *
+                </label>
+                <select
+                  id="categoria"
                   value={formData.categoria}
                   onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
                   className="input-field"
                   disabled={createMutation.isPending || updateMutation.isPending}
-                />
+                >
+                  <option value="">Selecione uma categoria</option>
+                  <option value="Salários">Salários</option>
+                  <option value="Aluguel">Aluguel</option>
+                  <option value="Combustível">Combustível</option>
+                  <option value="Manutenção">Manutenção</option>
+                  <option value="Seguros">Seguros</option>
+                  <option value="Publicidade">Publicidade</option>
+                  <option value="Vendas">Vendas</option>
+                  <option value="Juros">Juros</option>
+                  <option value="Outros">Outros</option>
+                </select>
               </div>
 
+              {/* Descrição */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Descrição *</label>
+                <label htmlFor="descricao" className="input-label">
+                  Descrição *
+                </label>
                 <textarea
+                  id="descricao"
                   value={formData.descricao}
                   onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
                   className="input-field"
                   rows={3}
+                  placeholder="Digite a descrição do registro"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
+              {/* Valor - Currency Input */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Valor *</label>
-                <input
-                  type="number"
-                  value={formData.valor}
-                  onChange={(e) => setFormData({ ...formData, valor: parseFloat(e.target.value) })}
-                  step="0.01"
-                  min="0"
-                  className="input-field"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                />
+                <label htmlFor="valor" className="input-label">
+                  Valor *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-600">R$</span>
+                  <input
+                    id="valor"
+                    type="number"
+                    value={formData.valor}
+                    onChange={(e) => setFormData({ ...formData, valor: parseFloat(e.target.value) || 0 })}
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    className="input-field pl-10"
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                  />
+                </div>
               </div>
 
+              {/* Data */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Data</label>
+                <label htmlFor="data" className="input-label">
+                  Data
+                </label>
                 <input
+                  id="data"
                   type="date"
                   value={formData.data}
                   onChange={(e) => setFormData({ ...formData, data: e.target.value })}
@@ -302,9 +666,13 @@ const FinanceiroPage: React.FC = () => {
                 />
               </div>
 
+              {/* Status */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
+                <label htmlFor="status" className="input-label">
+                  Status
+                </label>
                 <select
+                  id="status"
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                   className="input-field"
@@ -316,12 +684,31 @@ const FinanceiroPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={createMutation.isPending || updateMutation.isPending}>
+              {/* Form Actions */}
+              <div className="flex gap-3 justify-end pt-6 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingRecord ? 'Atualizar' : 'Criar'} Registro
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {createMutation.isPending || updateMutation.isPending ? (
+                    <span className="flex items-center gap-2">
+                      <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Salvando...
+                    </span>
+                  ) : editingRecord ? (
+                    'Atualizar'
+                  ) : (
+                    'Criar'
+                  )}
                 </button>
               </div>
             </form>
@@ -329,17 +716,43 @@ const FinanceiroPage: React.FC = () => {
         </div>
       )}
 
-      <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        title="Deletar Registro"
-        message="Tem certeza que deseja deletar este registro? Esta ação não pode ser desfeita."
-        confirmText="Deletar"
-        cancelText="Cancelar"
-        isDanger={true}
-        isLoading={deleteMutation.isPending}
-        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
-        onCancel={() => setDeleteConfirm({ isOpen: false })}
-      />
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.isOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Deletar Registro</h3>
+                <p className="text-sm text-slate-600 mt-1">Esta ação não pode ser desfeita</p>
+              </div>
+            </div>
+
+            <p className="text-slate-700 mb-6">
+              Tem certeza que deseja deletar este registro? Todos os dados associados serão removidos permanentemente.
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm({ isOpen: false })}
+                className="btn-secondary"
+                disabled={deleteMutation.isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+                className="btn-danger"
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deletando...' : 'Deletar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

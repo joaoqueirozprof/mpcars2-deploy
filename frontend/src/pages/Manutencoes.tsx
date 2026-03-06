@@ -1,22 +1,25 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Wrench, X } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
+import toast from 'react-hot-toast'
 import AppLayout from '@/components/layout/AppLayout'
 import DataTable from '@/components/shared/DataTable'
-import StatusBadge from '@/components/shared/StatusBadge'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import StatusBadge from '@/components/shared/StatusBadge'
 import { Manutencao, Veiculo, PaginatedResponse, PaginationParams } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import toast from 'react-hot-toast'
 
 const Manutencoes: React.FC = () => {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, limit: 10 })
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingMaintenance, setEditingMaintenance] = useState<Manutencao | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string }>({ isOpen: false })
   const [statusFilter, setStatusFilter] = useState<string>('todos')
+  const [typeFilter, setTypeFilter] = useState<string>('todos')
   const [formData, setFormData] = useState({
     veiculo_id: '',
     data_manutencao: new Date().toISOString().split('T')[0],
@@ -29,13 +32,14 @@ const Manutencoes: React.FC = () => {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['manutencoes', pagination, statusFilter],
+    queryKey: ['manutencoes', pagination, statusFilter, typeFilter],
     queryFn: async () => {
       const { data } = await api.get<PaginatedResponse<any>>('/manutencoes', {
         params: {
           page: pagination.page,
           limit: pagination.limit,
           status: statusFilter !== 'todos' ? statusFilter : undefined,
+          tipo: typeFilter !== 'todos' ? typeFilter : undefined,
         },
       })
       return data
@@ -51,7 +55,7 @@ const Manutencoes: React.FC = () => {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post('/manutencoes', data),
+    mutationFn: (formData: any) => api.post('/manutencoes', formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manutencoes'] })
       setIsModalOpen(false)
@@ -64,7 +68,7 @@ const Manutencoes: React.FC = () => {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: any) => api.patch(`/manutencoes/${editingMaintenance?.id}`, data),
+    mutationFn: (formData: any) => api.patch(`/manutencoes/${editingMaintenance?.id}`, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manutencoes'] })
       setIsModalOpen(false)
@@ -127,22 +131,79 @@ const Manutencoes: React.FC = () => {
     }
   }
 
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status)
+    setPagination({ ...pagination, page: 1 })
+  }
+
+  const handleTypeFilter = (type: string) => {
+    setTypeFilter(type)
+    setPagination({ ...pagination, page: 1 })
+  }
+
   const columns = [
-    { key: 'veiculo_id' as const, label: 'Veículo', render: (_: any, row: any) => row.veiculo?.placa || '-' },
-    { key: 'tipo' as const, label: 'Tipo', render: (tipo: string) => <StatusBadge status={tipo} label={tipo === 'preventiva' ? 'Preventiva' : 'Corretiva'} /> },
-    { key: 'data_manutencao' as const, label: 'Data', render: (date: string) => formatDate(date) },
-    { key: 'oficina' as const, label: 'Oficina' },
-    { key: 'valor' as const, label: 'Valor', render: (value: number) => formatCurrency(value) },
-    { key: 'status' as const, label: 'Status', render: (status: string) => <StatusBadge status={status} /> },
+    {
+      key: 'veiculo_id' as const,
+      label: 'Veículo',
+      render: (_: any, row: any) => <span className="text-slate-900">{row.veiculo?.placa || '-'}</span>,
+    },
+    {
+      key: 'tipo' as const,
+      label: 'Tipo',
+      render: (tipo: string) => (
+        <div className="flex items-center gap-1">
+          {tipo === 'preventiva' ? (
+            <span className="badge-info text-xs px-2 py-1">Preventiva</span>
+          ) : (
+            <span className="badge-danger text-xs px-2 py-1">Corretiva</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'data_manutencao' as const,
+      label: 'Data',
+      render: (date: string) => <span className="text-slate-700">{formatDate(date)}</span>,
+    },
+    {
+      key: 'oficina' as const,
+      label: 'Oficina',
+      render: (oficina: string) => <span className="text-slate-700">{oficina || '-'}</span>,
+    },
+    {
+      key: 'valor' as const,
+      label: 'Valor',
+      render: (value: number) => <span className="font-semibold text-slate-900">{formatCurrency(value)}</span>,
+    },
+    {
+      key: 'status' as const,
+      label: 'Status',
+      render: (status: string) => (
+        <div className="flex items-center gap-1">
+          {status === 'pendente' && <span className="badge-warning text-xs px-2 py-1">Pendente</span>}
+          {status === 'em_progresso' && <span className="badge-info text-xs px-2 py-1">Em Progresso</span>}
+          {status === 'concluida' && <span className="badge-success text-xs px-2 py-1">Concluída</span>}
+          {status === 'cancelada' && <span className="badge-danger text-xs px-2 py-1">Cancelada</span>}
+        </div>
+      ),
+    },
     {
       key: 'id' as const,
       label: 'Ações',
       render: (_: any, row: Manutencao) => (
         <div className="flex items-center gap-2">
-          <button onClick={() => handleOpenModal(row)} className="p-2 text-slate-600 hover:text-primary">
+          <button
+            onClick={() => handleOpenModal(row)}
+            className="btn-icon p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            title="Editar"
+          >
             <Edit size={16} />
           </button>
-          <button onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })} className="p-2 text-slate-600 hover:text-danger">
+          <button
+            onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })}
+            className="btn-icon p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Deletar"
+          >
             <Trash2 size={16} />
           </button>
         </div>
@@ -150,62 +211,105 @@ const Manutencoes: React.FC = () => {
     },
   ]
 
+  const isLoaded = !isLoading && data?.data
+  const isEmpty = isLoaded && data.data.length === 0
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">Manutenções</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento de manutenção da frota</p>
+            <h1 className="page-title flex items-center gap-2">
+              <Wrench className="text-purple-600" size={32} />
+              Manutenções
+            </h1>
+            <p className="page-subtitle">Gerenciamento de manutenção preventiva e corretiva da frota</p>
           </div>
-          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2">
+          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2 whitespace-nowrap">
             <Plus size={20} />
             Nova Manutenção
           </button>
         </div>
 
-        <div className="flex gap-2">
-          {['todos', 'pendente', 'em_progresso', 'concluida', 'cancelada'].map((status) => (
-            <button
-              key={status}
-              onClick={() => {
-                setStatusFilter(status)
-                setPagination({ ...pagination, page: 1 })
-              }}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
-                statusFilter === status ? 'bg-primary text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
-            </button>
-          ))}
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex gap-2 flex-wrap">
+            {['todos', 'pendente', 'em_progresso', 'concluida', 'cancelada'].map((status) => (
+              <button
+                key={status}
+                onClick={() => handleStatusFilter(status)}
+                className={`filter-tab text-sm ${statusFilter === status ? 'filter-tab-active' : 'filter-tab-inactive'}`}
+              >
+                {status === 'todos'
+                  ? 'Todos'
+                  : status === 'em_progresso'
+                    ? 'Em Andamento'
+                    : status === 'concluida'
+                      ? 'Concluídas'
+                      : status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {['todos', 'preventiva', 'corretiva'].map((type) => (
+              <button
+                key={type}
+                onClick={() => handleTypeFilter(type)}
+                className={`filter-tab text-sm ${typeFilter === type ? 'filter-tab-active' : 'filter-tab-inactive'}`}
+              >
+                {type === 'todos' ? 'Todos os Tipos' : type === 'preventiva' ? 'Preventiva' : 'Corretiva'}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="card">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: data?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
+          {isEmpty ? (
+            <div className="empty-state py-12">
+              <div className="empty-state-icon bg-purple-50 mb-4">
+                <Wrench className="text-purple-600" size={40} />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Nenhuma manutenção registrada</h3>
+              <p className="text-slate-600 mb-4">Registre a manutenção dos veículos para acompanhar o histórico</p>
+              <button onClick={() => handleOpenModal()} className="btn-primary">
+                <Plus size={20} className="inline mr-2" />
+                Nova Manutenção
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={data?.data || []}
+              isLoading={isLoading}
+              pagination={{
+                page: pagination.page,
+                limit: pagination.limit,
+                total: data?.total || 0,
+                onPageChange: (page) => setPagination({ ...pagination, page }),
+              }}
+            />
+          )}
         </div>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingMaintenance ? 'Editar Manutenção' : 'Nova Manutenção'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-display font-bold text-slate-900">
+                {editingMaintenance ? 'Editar Manutenção' : 'Nova Manutenção'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded transition-colors"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Veículo *</label>
+                <label className="input-label">Veículo *</label>
                 <select
                   value={formData.veiculo_id}
                   onChange={(e) => setFormData({ ...formData, veiculo_id: e.target.value })}
@@ -222,7 +326,7 @@ const Manutencoes: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Tipo *</label>
+                <label className="input-label">Tipo de Manutenção *</label>
                 <select
                   value={formData.tipo}
                   onChange={(e) => setFormData({ ...formData, tipo: e.target.value as any })}
@@ -235,7 +339,7 @@ const Manutencoes: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Data Manutenção</label>
+                <label className="input-label">Data da Manutenção</label>
                 <input
                   type="date"
                   value={formData.data_manutencao}
@@ -246,18 +350,19 @@ const Manutencoes: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Descrição *</label>
+                <label className="input-label">Descrição *</label>
                 <textarea
                   value={formData.descricao}
                   onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
                   className="input-field"
                   rows={3}
+                  placeholder="Descreva o trabalho realizado ou a ser realizado"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Valor *</label>
+                <label className="input-label">Valor *</label>
                 <input
                   type="number"
                   value={formData.valor}
@@ -265,35 +370,38 @@ const Manutencoes: React.FC = () => {
                   step="0.01"
                   min="0"
                   className="input-field"
+                  placeholder="0,00"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Oficina</label>
+                <label className="input-label">Oficina</label>
                 <input
                   type="text"
                   value={formData.oficina}
                   onChange={(e) => setFormData({ ...formData, oficina: e.target.value })}
                   className="input-field"
+                  placeholder="Nome da oficina"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Quilometragem</label>
+                <label className="input-label">Quilometragem</label>
                 <input
                   type="number"
                   value={formData.quilometragem}
                   onChange={(e) => setFormData({ ...formData, quilometragem: parseInt(e.target.value) })}
                   min="0"
                   className="input-field"
+                  placeholder="Quilometragem do veículo"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
+                <label className="input-label">Status</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
@@ -308,11 +416,20 @@ const Manutencoes: React.FC = () => {
               </div>
 
               <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={createMutation.isPending || updateMutation.isPending}>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingMaintenance ? 'Atualizar' : 'Criar'} Manutenção
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {createMutation.isPending || updateMutation.isPending ? 'Processando...' : editingMaintenance ? 'Atualizar' : 'Criar'} Manutenção
                 </button>
               </div>
             </form>
@@ -323,7 +440,7 @@ const Manutencoes: React.FC = () => {
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}
         title="Deletar Manutenção"
-        message="Tem certeza que deseja deletar esta manutenção? Esta ação não pode ser desfeita."
+        message="Tem certeza que deseja deletar este registro de manutenção? Esta ação não pode ser desfeita."
         confirmText="Deletar"
         cancelText="Cancelar"
         isDanger={true}

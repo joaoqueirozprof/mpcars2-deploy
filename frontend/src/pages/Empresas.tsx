@@ -1,20 +1,23 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Building2, X } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import api from '@/services/api'
+import toast from 'react-hot-toast'
 import AppLayout from '@/components/layout/AppLayout'
 import DataTable from '@/components/shared/DataTable'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { Empresa, PaginatedResponse, PaginationParams } from '@/types'
-import { formatPhone } from '@/lib/utils'
-import toast from 'react-hot-toast'
+import { formatPhone, formatCNPJ } from '@/lib/utils'
 
 const Empresas: React.FC = () => {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, limit: 10 })
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCompany, setEditingCompany] = useState<Empresa | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string }>({ isOpen: false })
+  const [searchTerm, setSearchTerm] = useState('')
   const [formData, setFormData] = useState({
     nome: '',
     cnpj: '',
@@ -28,17 +31,21 @@ const Empresas: React.FC = () => {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['empresas', pagination],
+    queryKey: ['empresas', pagination, searchTerm],
     queryFn: async () => {
       const { data } = await api.get<PaginatedResponse<Empresa>>('/empresas', {
-        params: { page: pagination.page, limit: pagination.limit },
+        params: {
+          page: pagination.page,
+          limit: pagination.limit,
+          search: searchTerm || undefined,
+        },
       })
       return data
     },
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post('/empresas', data),
+    mutationFn: (formData: any) => api.post('/empresas', formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['empresas'] })
       setIsModalOpen(false)
@@ -51,7 +58,7 @@ const Empresas: React.FC = () => {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: any) => api.patch(`/empresas/${editingCompany?.id}`, data),
+    mutationFn: (formData: any) => api.patch(`/empresas/${editingCompany?.id}`, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['empresas'] })
       setIsModalOpen(false)
@@ -115,21 +122,40 @@ const Empresas: React.FC = () => {
     }
   }
 
+  const handleSearch = (value: string) => {
+    setSearchTerm(value)
+    setPagination({ ...pagination, page: 1 })
+  }
+
   const columns = [
-    { key: 'nome' as const, label: 'Nome', sortable: true, width: '25%' },
-    { key: 'cnpj' as const, label: 'CNPJ', width: '15%' },
-    { key: 'telefone' as const, label: 'Telefone', render: (phone: string) => formatPhone(phone) },
-    { key: 'email' as const, label: 'Email', width: '20%' },
-    { key: 'cidade' as const, label: 'Cidade' },
+    {
+      key: 'nome' as const,
+      label: 'Nome',
+      sortable: true,
+      width: '25%',
+      render: (nome: string) => <span className="font-medium text-slate-900">{nome}</span>,
+    },
+    { key: 'cnpj' as const, label: 'CNPJ', width: '15%', render: (cnpj: string) => formatCNPJ(cnpj) },
+    { key: 'telefone' as const, label: 'Telefone', render: (phone: string) => formatPhone(phone) || '-' },
+    { key: 'email' as const, label: 'Email', width: '20%', render: (email: string) => email || '-' },
+    { key: 'cidade' as const, label: 'Cidade', render: (cidade: string) => cidade || '-' },
     {
       key: 'id' as const,
       label: 'Ações',
       render: (_: any, row: Empresa) => (
         <div className="flex items-center gap-2">
-          <button onClick={() => handleOpenModal(row)} className="p-2 text-slate-600 hover:text-primary">
+          <button
+            onClick={() => handleOpenModal(row)}
+            className="btn-icon p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            title="Editar"
+          >
             <Edit size={16} />
           </button>
-          <button onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })} className="p-2 text-slate-600 hover:text-danger">
+          <button
+            onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })}
+            className="btn-icon p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Deletar"
+          >
             <Trash2 size={16} />
           </button>
         </div>
@@ -137,151 +163,209 @@ const Empresas: React.FC = () => {
     },
   ]
 
+  const isLoaded = !isLoading && data?.data
+  const isEmpty = isLoaded && data.data.length === 0
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">Empresas</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento de empresas</p>
+            <h1 className="page-title flex items-center gap-2">
+              <Building2 className="text-blue-600" size={32} />
+              Empresas
+            </h1>
+            <p className="page-subtitle">Gerenciamento de empresas cadastradas no sistema</p>
           </div>
-          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2">
+          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2 whitespace-nowrap">
             <Plus size={20} />
             Nova Empresa
           </button>
         </div>
 
         <div className="card">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: data?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
+          <div className="mb-6">
+            <label className="input-label">Buscar Empresa</label>
+            <input
+              type="text"
+              placeholder="Digite o nome ou CNPJ da empresa..."
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="input-field"
+            />
+          </div>
+
+          {isEmpty ? (
+            <div className="empty-state py-12">
+              <div className="empty-state-icon bg-blue-50 mb-4">
+                <Building2 className="text-blue-600" size={40} />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Nenhuma empresa encontrada</h3>
+              <p className="text-slate-600 mb-4">Comece adicionando a primeira empresa ao sistema</p>
+              <button onClick={() => handleOpenModal()} className="btn-primary">
+                <Plus size={20} className="inline mr-2" />
+                Criar Empresa
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={data?.data || []}
+              isLoading={isLoading}
+              pagination={{
+                page: pagination.page,
+                limit: pagination.limit,
+                total: data?.total || 0,
+                onPageChange: (page) => setPagination({ ...pagination, page }),
+              }}
+            />
+          )}
         </div>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-96 overflow-y-auto p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingCompany ? 'Editar Empresa' : 'Nova Empresa'}
-            </h2>
+        <div className="modal-overlay">
+          <div className="modal-content max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-display font-bold text-slate-900">
+                {editingCompany ? 'Editar Empresa' : 'Nova Empresa'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded transition-colors"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Nome *</label>
+                  <label className="input-label">Nome *</label>
                   <input
                     type="text"
                     value={formData.nome}
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                     className="input-field"
+                    placeholder="Nome da empresa"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">CNPJ *</label>
+                  <label className="input-label">CNPJ *</label>
                   <input
                     type="text"
                     value={formData.cnpj}
                     onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
                     className="input-field"
+                    placeholder="00.000.000/0000-00"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                  <label className="input-label">Email</label>
                   <input
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="input-field"
+                    placeholder="email@empresa.com"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Telefone</label>
+                  <label className="input-label">Telefone</label>
                   <input
                     type="tel"
                     value={formData.telefone}
                     onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
                     className="input-field"
+                    placeholder="(11) 9999-9999"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Endereço</label>
+                  <label className="input-label">Endereço</label>
                   <input
                     type="text"
                     value={formData.endereco}
                     onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
                     className="input-field"
+                    placeholder="Rua, número, complemento"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Cidade</label>
+                  <label className="input-label">Cidade</label>
                   <input
                     type="text"
                     value={formData.cidade}
                     onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
                     className="input-field"
+                    placeholder="São Paulo"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Estado</label>
+                  <label className="input-label">Estado</label>
                   <input
                     type="text"
                     value={formData.estado}
-                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, estado: e.target.value.toUpperCase() })}
                     maxLength={2}
                     className="input-field"
+                    placeholder="SP"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">CEP</label>
+                  <label className="input-label">CEP</label>
                   <input
                     type="text"
                     value={formData.cep}
                     onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
                     className="input-field"
+                    placeholder="01234-567"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Responsável</label>
+                  <label className="input-label">Responsável</label>
                   <input
                     type="text"
                     value={formData.responsavel}
                     onChange={(e) => setFormData({ ...formData, responsavel: e.target.value })}
                     className="input-field"
+                    placeholder="Nome do responsável"
                     disabled={createMutation.isPending || updateMutation.isPending}
                   />
                 </div>
               </div>
 
-              <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={createMutation.isPending || updateMutation.isPending}>
+              <div className="flex gap-3 justify-end pt-6 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingCompany ? 'Atualizar' : 'Criar'} Empresa
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {createMutation.isPending || updateMutation.isPending ? 'Processando...' : editingCompany ? 'Atualizar Empresa' : 'Criar Empresa'}
                 </button>
               </div>
             </form>

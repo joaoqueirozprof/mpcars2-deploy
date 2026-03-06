@@ -1,22 +1,33 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2 } from 'lucide-react'
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Search,
+  Car,
+  AlertCircle,
+  X,
+  CheckCircle,
+  AlertTriangle,
+  Wrench,
+  XCircle,
+} from 'lucide-react'
 import api from '@/services/api'
 import AppLayout from '@/components/layout/AppLayout'
-import DataTable from '@/components/shared/DataTable'
-import StatusBadge from '@/components/shared/StatusBadge'
-import ConfirmDialog from '@/components/shared/ConfirmDialog'
-import { Veiculo, PaginatedResponse, PaginationParams } from '@/types'
-import { formatCurrency, formatDate, formatPlaca } from '@/lib/utils'
+import { Veiculo } from '@/types'
 import toast from 'react-hot-toast'
 
 const Veiculos: React.FC = () => {
   const queryClient = useQueryClient()
-  const [pagination, setPagination] = useState<PaginationParams>({ page: 1, limit: 10 })
+  const [searchTerm, setSearchTerm] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingVehicle, setEditingVehicle] = useState<Veiculo | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string }>({ isOpen: false })
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string; placa?: string }>({
+    isOpen: false,
+  })
   const [statusFilter, setStatusFilter] = useState<string>('todos')
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [formData, setFormData] = useState({
     placa: '',
     marca: '',
@@ -30,20 +41,42 @@ const Veiculos: React.FC = () => {
     observacoes: '',
   })
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['veiculos', pagination, statusFilter],
+  const currentYear = new Date().getFullYear()
+
+  // Fetch all vehicles
+  const { data: vehiclesData, isLoading: isLoadingVehicles } = useQuery({
+    queryKey: ['veiculos'],
     queryFn: async () => {
-      const { data } = await api.get<PaginatedResponse<Veiculo>>('/veiculos', {
-        params: {
-          page: pagination.page,
-          limit: pagination.limit,
-          status: statusFilter !== 'todos' ? statusFilter : undefined,
-        },
+      const { data } = await api.get<{ data: Veiculo[]; total: number }>('/veiculos', {
+        params: { limit: 1000 },
       })
-      return data
+      return data.data || []
     },
   })
 
+  // Filter vehicles based on status and search
+  const filteredVehicles = useMemo(() => {
+    let filtered = vehiclesData || []
+
+    if (statusFilter !== 'todos') {
+      filtered = filtered.filter((v) => v.status === statusFilter)
+    }
+
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase()
+      filtered = filtered.filter(
+        (v) =>
+          v.placa.toLowerCase().includes(search) ||
+          v.marca.toLowerCase().includes(search) ||
+          v.modelo.toLowerCase().includes(search) ||
+          v.cor.toLowerCase().includes(search),
+      )
+    }
+
+    return filtered
+  }, [vehiclesData, statusFilter, searchTerm])
+
+  // Create vehicle mutation
   const createMutation = useMutation({
     mutationFn: (data: any) => api.post('/veiculos', data),
     onSuccess: () => {
@@ -57,6 +90,7 @@ const Veiculos: React.FC = () => {
     },
   })
 
+  // Update vehicle mutation
   const updateMutation = useMutation({
     mutationFn: (data: any) => api.patch(`/veiculos/${editingVehicle?.id}`, data),
     onSuccess: () => {
@@ -70,6 +104,7 @@ const Veiculos: React.FC = () => {
     },
   })
 
+  // Delete vehicle mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/veiculos/${id}`),
     onSuccess: () => {
@@ -82,12 +117,42 @@ const Veiculos: React.FC = () => {
     },
   })
 
+  // Form validation
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.placa.trim()) {
+      errors.placa = 'Placa é obrigatória'
+    } else if (!/^[A-Z]{3}\d{4}$|^[A-Z]{3}\d[A-Z]\d{2}$/.test(formData.placa)) {
+      errors.placa = 'Formato inválido (ABC1234 ou ABC1D23)'
+    }
+
+    if (!formData.marca.trim()) {
+      errors.marca = 'Marca é obrigatória'
+    }
+
+    if (!formData.modelo.trim()) {
+      errors.modelo = 'Modelo é obrigatório'
+    }
+
+    if (!formData.ano || formData.ano < 1990 || formData.ano > currentYear + 1) {
+      errors.ano = `Ano deve estar entre 1990 e ${currentYear + 1}`
+    }
+
+    if (formData.quilometragem < 0) {
+      errors.quilometragem = 'Quilometragem não pode ser negativa'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   const resetForm = () => {
     setFormData({
       placa: '',
       marca: '',
       modelo: '',
-      ano: new Date().getFullYear(),
+      ano: currentYear,
       cor: '',
       quilometragem: 0,
       status: 'disponivel',
@@ -95,13 +160,25 @@ const Veiculos: React.FC = () => {
       data_compra: '',
       observacoes: '',
     })
+    setFormErrors({})
     setEditingVehicle(null)
   }
 
   const handleOpenModal = (vehicle?: Veiculo) => {
     if (vehicle) {
       setEditingVehicle(vehicle)
-      setFormData(vehicle)
+      setFormData({
+        placa: vehicle.placa,
+        marca: vehicle.marca,
+        modelo: vehicle.modelo,
+        ano: vehicle.ano,
+        cor: vehicle.cor,
+        quilometragem: vehicle.quilometragem,
+        status: vehicle.status,
+        valor_aquisicao: vehicle.valor_aquisicao,
+        data_compra: vehicle.data_compra,
+        observacoes: vehicle.observacoes,
+      })
     } else {
       resetForm()
     }
@@ -111,8 +188,7 @@ const Veiculos: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.placa || !formData.marca || !formData.modelo) {
-      toast.error('Preencha todos os campos obrigatórios')
+    if (!validateForm()) {
       return
     }
 
@@ -123,245 +199,379 @@ const Veiculos: React.FC = () => {
     }
   }
 
-  const columns = [
-    {
-      key: 'placa' as const,
-      label: 'Placa',
-      sortable: true,
-      width: '15%',
-      render: (placa: string) => <span className="font-semibold">{formatPlaca(placa)}</span>,
-    },
-    {
-      key: 'marca' as const,
-      label: 'Marca',
-      sortable: true,
-      width: '15%',
-    },
-    {
-      key: 'modelo' as const,
-      label: 'Modelo',
-      sortable: true,
-      width: '20%',
-    },
-    {
-      key: 'ano' as const,
-      label: 'Ano',
-      sortable: true,
-      width: '10%',
-    },
-    {
-      key: 'status' as const,
-      label: 'Status',
-      render: (status: string) => <StatusBadge status={status} />,
-    },
-    {
-      key: 'quilometragem' as const,
-      label: 'Km',
-      render: (km: number) => `${km.toLocaleString('pt-BR')} km`,
-    },
-    {
-      key: 'id' as const,
-      label: 'Ações',
-      render: (_: any, row: Veiculo) => (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleOpenModal(row)}
-            className="p-2 text-slate-600 hover:text-primary transition-colors"
-          >
-            <Edit size={16} />
-          </button>
-          <button
-            onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })}
-            className="p-2 text-slate-600 hover:text-danger transition-colors"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ),
-    },
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'disponivel':
+        return 'badge-success'
+      case 'alugado':
+        return 'badge-info'
+      case 'manutencao':
+        return 'badge-warning'
+      case 'inativo':
+        return 'badge-danger'
+      default:
+        return 'badge-neutral'
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'disponivel':
+        return <CheckCircle size={16} />
+      case 'alugado':
+        return <AlertTriangle size={16} />
+      case 'manutencao':
+        return <Wrench size={16} />
+      case 'inativo':
+        return <XCircle size={16} />
+      default:
+        return null
+    }
+  }
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'disponivel':
+        return 'Disponível'
+      case 'alugado':
+        return 'Alugado'
+      case 'manutencao':
+        return 'Manutenção'
+      case 'inativo':
+        return 'Inativo'
+      default:
+        return status
+    }
+  }
+
+  const statusFilters = [
+    { key: 'todos', label: 'Todos' },
+    { key: 'disponivel', label: 'Disponível' },
+    { key: 'alugado', label: 'Alugado' },
+    { key: 'manutencao', label: 'Manutenção' },
+    { key: 'inativo', label: 'Inativo' },
   ]
+
+  const isLoading = isLoadingVehicles
+  const isMutating = createMutation.isPending || updateMutation.isPending
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-8">
+        {/* Page Header */}
+        <div className="page-header">
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">Veículos</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento da frota</p>
+            <h1 className="page-title">Veículos</h1>
+            <p className="page-subtitle">Gerenciar e controlar frota de veículos</p>
           </div>
           <button
             onClick={() => handleOpenModal()}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary flex items-center gap-2 transition-all duration-200"
           >
             <Plus size={20} />
             Novo Veículo
           </button>
         </div>
 
-        {/* Status Filter */}
-        <div className="flex gap-2 flex-wrap">
-          {['todos', 'disponivel', 'alugado', 'manutencao', 'inativo'].map((status) => (
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder="Buscar por placa, marca, modelo ou cor..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="input-field pl-12 w-full transition-all duration-200"
+          />
+        </div>
+
+        {/* Status Filter Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {statusFilters.map((filter) => (
             <button
-              key={status}
+              key={filter.key}
               onClick={() => {
-                setStatusFilter(status)
-                setPagination({ ...pagination, page: 1 })
+                setStatusFilter(filter.key)
+                setSearchTerm('')
               }}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === status
-                  ? 'bg-primary text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              className={`filter-tab transition-all duration-200 whitespace-nowrap ${
+                statusFilter === filter.key ? 'filter-tab-active' : 'filter-tab-inactive'
               }`}
             >
-              {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+              {filter.label}
             </button>
           ))}
         </div>
 
-        <div className="card">
-          <DataTable
-            columns={columns}
-            data={data?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: data?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
-        </div>
+        {/* Content */}
+        {isLoading ? (
+          <div className="card">
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-16 bg-slate-200 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </div>
+        ) : filteredVehicles.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <Car size={48} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mt-4">Nenhum veículo encontrado</h3>
+              <p className="text-slate-600 mt-2">
+                {searchTerm
+                  ? 'Nenhum veículo corresponde à sua busca'
+                  : 'Comece a adicionar veículos à sua frota'}
+              </p>
+              {!searchTerm && (
+                <button
+                  onClick={() => handleOpenModal()}
+                  className="btn-primary mt-6 inline-flex items-center gap-2"
+                >
+                  <Plus size={18} />
+                  Adicionar Primeiro Veículo
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="table-header text-left">Placa</th>
+                    <th className="table-header text-left">Marca/Modelo</th>
+                    <th className="table-header text-left">Ano</th>
+                    <th className="table-header text-left">Cor</th>
+                    <th className="table-header text-left">Status</th>
+                    <th className="table-header text-left">Km</th>
+                    <th className="table-header text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVehicles.map((vehicle) => (
+                    <tr
+                      key={vehicle.id}
+                      className="border-b border-slate-200 hover:bg-slate-50 transition-colors duration-150"
+                    >
+                      <td className="table-cell">
+                        <span className="font-semibold text-slate-900">{vehicle.placa}</span>
+                      </td>
+                      <td className="table-cell">
+                        <div>
+                          <p className="font-medium text-slate-900">{vehicle.marca}</p>
+                          <p className="text-sm text-slate-600">{vehicle.modelo}</p>
+                        </div>
+                      </td>
+                      <td className="table-cell">
+                        <span className="text-slate-900">{vehicle.ano}</span>
+                      </td>
+                      <td className="table-cell">
+                        <span className="text-slate-900">{vehicle.cor}</span>
+                      </td>
+                      <td className="table-cell">
+                        <div className={`${getStatusBadgeClass(vehicle.status)} inline-flex items-center gap-2`}>
+                          {getStatusIcon(vehicle.status)}
+                          {getStatusLabel(vehicle.status)}
+                        </div>
+                      </td>
+                      <td className="table-cell">
+                        <span className="text-slate-900">{vehicle.quilometragem.toLocaleString('pt-BR')} km</span>
+                      </td>
+                      <td className="table-cell text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleOpenModal(vehicle)}
+                            className="btn-icon transition-colors duration-200"
+                            title="Editar"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setDeleteConfirm({
+                                isOpen: true,
+                                id: vehicle.id,
+                                placa: vehicle.placa,
+                              })
+                            }
+                            className="btn-icon bg-red-50 hover:bg-red-100 text-red-600 transition-colors duration-200"
+                            title="Deletar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Modal */}
+      {/* Create/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-96 overflow-y-auto p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingVehicle ? 'Editar Veículo' : 'Novo Veículo'}
-            </h2>
+        <div className="modal-overlay" onClick={() => !isMutating && setIsModalOpen(false)}>
+          <div
+            className="modal-content max-w-2xl transition-all duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-6 border-b border-slate-200">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {editingVehicle ? 'Editar Veículo' : 'Novo Veículo'}
+                </h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  {editingVehicle ? 'Atualize as informações do veículo' : 'Adicione um novo veículo à frota'}
+                </p>
+              </div>
+              <button
+                onClick={() => !isMutating && setIsModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors duration-200"
+                disabled={isMutating}
+              >
+                <X size={24} className="text-slate-500" />
+              </button>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Modal Body */}
+            <form onSubmit={handleSubmit} className="py-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Placa */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Placa *
+                  <label className="input-label">
+                    Placa <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={formData.placa}
                     onChange={(e) => setFormData({ ...formData, placa: e.target.value.toUpperCase() })}
-                    placeholder="ABC1234"
-                    className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    placeholder="ABC1234 ou ABC1D23"
+                    className={`input-field ${formErrors.placa ? 'border-red-500 focus:ring-red-500' : ''}`}
+                    disabled={isMutating}
                   />
+                  {formErrors.placa && <p className="text-sm text-red-500 mt-2">{formErrors.placa}</p>}
                 </div>
 
+                {/* Marca */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Marca *
+                  <label className="input-label">
+                    Marca <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={formData.marca}
                     onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
-                    className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    placeholder="Fiat, Toyota, Honda..."
+                    className={`input-field ${formErrors.marca ? 'border-red-500 focus:ring-red-500' : ''}`}
+                    disabled={isMutating}
                   />
+                  {formErrors.marca && <p className="text-sm text-red-500 mt-2">{formErrors.marca}</p>}
                 </div>
 
+                {/* Modelo */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Modelo *
+                  <label className="input-label">
+                    Modelo <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={formData.modelo}
                     onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
-                    className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    placeholder="Uno, Camry, Civic..."
+                    className={`input-field ${formErrors.modelo ? 'border-red-500 focus:ring-red-500' : ''}`}
+                    disabled={isMutating}
                   />
+                  {formErrors.modelo && <p className="text-sm text-red-500 mt-2">{formErrors.modelo}</p>}
                 </div>
 
+                {/* Ano */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Ano *
+                  <label className="input-label">
+                    Ano <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     value={formData.ano}
                     onChange={(e) => setFormData({ ...formData, ano: parseInt(e.target.value) })}
-                    min="1900"
-                    max={new Date().getFullYear() + 1}
-                    className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    min="1990"
+                    max={currentYear + 1}
+                    className={`input-field ${formErrors.ano ? 'border-red-500 focus:ring-red-500' : ''}`}
+                    disabled={isMutating}
                   />
+                  {formErrors.ano && <p className="text-sm text-red-500 mt-2">{formErrors.ano}</p>}
                 </div>
 
+                {/* Cor */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Cor
-                  </label>
+                  <label className="input-label">Cor</label>
                   <input
                     type="text"
                     value={formData.cor}
                     onChange={(e) => setFormData({ ...formData, cor: e.target.value })}
+                    placeholder="Preto, Branco, Prata..."
                     className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    disabled={isMutating}
                   />
                 </div>
 
+                {/* Quilometragem */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Quilometragem
-                  </label>
+                  <label className="input-label">Quilometragem</label>
                   <input
                     type="number"
                     value={formData.quilometragem}
-                    onChange={(e) => setFormData({ ...formData, quilometragem: parseInt(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, quilometragem: parseInt(e.target.value) || 0 })}
                     min="0"
-                    className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    placeholder="0"
+                    className={`input-field ${formErrors.quilometragem ? 'border-red-500 focus:ring-red-500' : ''}`}
+                    disabled={isMutating}
                   />
+                  {formErrors.quilometragem && (
+                    <p className="text-sm text-red-500 mt-2">{formErrors.quilometragem}</p>
+                  )}
                 </div>
 
+                {/* Valor Aquisição */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Valor Aquisição
-                  </label>
+                  <label className="input-label">Valor Aquisição</label>
                   <input
                     type="number"
                     value={formData.valor_aquisicao}
-                    onChange={(e) => setFormData({ ...formData, valor_aquisicao: parseFloat(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, valor_aquisicao: parseFloat(e.target.value) || 0 })}
                     step="0.01"
                     min="0"
+                    placeholder="0.00"
                     className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    disabled={isMutating}
                   />
                 </div>
 
+                {/* Data Compra */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Data Compra
-                  </label>
+                  <label className="input-label">Data Compra</label>
                   <input
                     type="date"
                     value={formData.data_compra}
                     onChange={(e) => setFormData({ ...formData, data_compra: e.target.value })}
                     className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    disabled={isMutating}
                   />
                 </div>
 
+                {/* Status */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Status
-                  </label>
+                  <label className="input-label">Status</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                     className="input-field"
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    disabled={isMutating}
                   >
                     <option value="disponivel">Disponível</option>
                     <option value="alugado">Alugado</option>
@@ -370,34 +580,36 @@ const Veiculos: React.FC = () => {
                   </select>
                 </div>
 
+                {/* Observações */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Observações
-                  </label>
+                  <label className="input-label">Observações</label>
                   <textarea
                     value={formData.observacoes}
                     onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                    className="input-field"
+                    placeholder="Adicione notas sobre o veículo..."
                     rows={3}
-                    disabled={createMutation.isPending || updateMutation.isPending}
+                    className="input-field resize-none"
+                    disabled={isMutating}
                   />
                 </div>
               </div>
 
-              <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+              {/* Modal Footer */}
+              <div className="flex gap-3 justify-end pt-6 border-t border-slate-200 mt-6">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="btn-secondary"
-                  disabled={createMutation.isPending || updateMutation.isPending}
+                  disabled={isMutating}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary"
-                  disabled={createMutation.isPending || updateMutation.isPending}
+                  className="btn-primary inline-flex items-center gap-2"
+                  disabled={isMutating}
                 >
+                  {isMutating && <div className="animate-spin">⟳</div>}
                   {editingVehicle ? 'Atualizar' : 'Criar'} Veículo
                 </button>
               </div>
@@ -406,18 +618,48 @@ const Veiculos: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        title="Deletar Veículo"
-        message="Tem certeza que deseja deletar este veículo? Esta ação não pode ser desfeita."
-        confirmText="Deletar"
-        cancelText="Cancelar"
-        isDanger={true}
-        isLoading={deleteMutation.isPending}
-        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
-        onCancel={() => setDeleteConfirm({ isOpen: false })}
-      />
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.isOpen && (
+        <div
+          className="modal-overlay"
+          onClick={() => !deleteMutation.isPending && setDeleteConfirm({ isOpen: false })}
+        >
+          <div
+            className="modal-content max-w-md transition-all duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <AlertCircle size={24} className="text-red-600" />
+              </div>
+
+              <h3 className="text-lg font-bold text-slate-900">Deletar Veículo</h3>
+              <p className="text-slate-600 mt-2">
+                Tem certeza que deseja deletar o veículo <span className="font-semibold">{deleteConfirm.placa}</span>?
+              </p>
+              <p className="text-sm text-slate-500 mt-2">Esta ação não pode ser desfeita.</p>
+
+              <div className="flex gap-3 justify-center mt-8 w-full">
+                <button
+                  onClick={() => setDeleteConfirm({ isOpen: false })}
+                  className="btn-secondary flex-1"
+                  disabled={deleteMutation.isPending}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+                  className="btn-danger flex-1 inline-flex items-center justify-center gap-2"
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending && <div className="animate-spin">⟳</div>}
+                  Deletar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

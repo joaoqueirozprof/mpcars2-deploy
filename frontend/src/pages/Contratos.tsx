@@ -1,25 +1,50 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, DollarSign } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  DollarSign,
+  FileText,
+  Calendar,
+  Users,
+  AlertCircle,
+  ChevronRight,
+  Search,
+  X,
+  CheckCircle,
+  Clock,
+} from 'lucide-react'
 import api from '@/services/api'
 import AppLayout from '@/components/layout/AppLayout'
-import DataTable from '@/components/shared/DataTable'
-import StatusBadge from '@/components/shared/StatusBadge'
-import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { Contrato, Cliente, Veiculo, PaginatedResponse, PaginationParams } from '@/types'
 import { formatCurrency, formatDate, calculateDays } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
+interface FormData {
+  cliente_id: string
+  veiculo_id: string
+  data_inicio: string
+  data_fim: string
+  quilometragem_inicial: number
+  valor_diaria: number
+  observacoes: string
+}
+
+type StatusFilter = 'todos' | 'ativo' | 'finalizado' | 'cancelado' | 'atraso'
+
 const Contratos: React.FC = () => {
   const queryClient = useQueryClient()
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, limit: 10 })
+  const [searchTerm, setSearchTerm] = useState('')
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingContract, setEditingContract] = useState<Contrato | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id?: string }>({ isOpen: false })
-  const [statusFilter, setStatusFilter] = useState<string>('todos')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
+  const [dateError, setDateError] = useState<string>('')
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     cliente_id: '',
     veiculo_id: '',
     data_inicio: '',
@@ -30,13 +55,14 @@ const Contratos: React.FC = () => {
   })
 
   const { data: contratos, isLoading } = useQuery({
-    queryKey: ['contratos', pagination, statusFilter],
+    queryKey: ['contratos', pagination, statusFilter, searchTerm],
     queryFn: async () => {
-      const { data } = await api.get<PaginatedResponse<any>>('/contratos', {
+      const { data } = await api.get<PaginatedResponse<Contrato>>('/contratos', {
         params: {
           page: pagination.page,
           limit: pagination.limit,
           status: statusFilter !== 'todos' ? statusFilter : undefined,
+          search: searchTerm || undefined,
         },
       })
       return data
@@ -109,12 +135,21 @@ const Contratos: React.FC = () => {
     })
     setEditingContract(null)
     setStep(1)
+    setDateError('')
   }
 
   const handleOpenModal = (contract?: Contrato) => {
     if (contract) {
       setEditingContract(contract)
-      setFormData(contract)
+      setFormData({
+        cliente_id: contract.cliente_id,
+        veiculo_id: contract.veiculo_id,
+        data_inicio: contract.data_inicio,
+        data_fim: contract.data_fim,
+        quilometragem_inicial: contract.quilometragem_inicial,
+        valor_diaria: contract.valor_diaria,
+        observacoes: contract.observacoes,
+      })
       setStep(3)
     } else {
       resetForm()
@@ -123,10 +158,48 @@ const Contratos: React.FC = () => {
     setIsModalOpen(true)
   }
 
+  const validateDates = (inicio: string, fim: string): boolean => {
+    if (!inicio || !fim) {
+      setDateError('')
+      return false
+    }
+    const inicioDate = new Date(inicio)
+    const fimDate = new Date(fim)
+    if (fimDate <= inicioDate) {
+      setDateError('Data de fim deve ser posterior à data de início')
+      return false
+    }
+    setDateError('')
+    return true
+  }
+
+  const handleDateChange = (field: 'data_inicio' | 'data_fim', value: string) => {
+    const newFormData = { ...formData, [field]: value }
+    setFormData(newFormData)
+    if (newFormData.data_inicio && newFormData.data_fim) {
+      validateDates(newFormData.data_inicio, newFormData.data_fim)
+    }
+  }
+
   const handleNextStep = () => {
-    if (step === 1 && formData.cliente_id && formData.veiculo_id) {
-      setStep(2)
-    } else if (step === 2 && formData.data_inicio && formData.data_fim && formData.valor_diaria > 0) {
+    if (step === 1) {
+      if (formData.cliente_id && formData.veiculo_id) {
+        setStep(2)
+      } else {
+        toast.error('Selecione um cliente e um veículo')
+      }
+    } else if (step === 2) {
+      if (!formData.data_inicio || !formData.data_fim) {
+        toast.error('Preencha as datas')
+        return
+      }
+      if (!validateDates(formData.data_inicio, formData.data_fim)) {
+        return
+      }
+      if (formData.valor_diaria <= 0) {
+        toast.error('Valor da diária deve ser maior que zero')
+        return
+      }
       setStep(3)
     }
   }
@@ -149,6 +222,10 @@ const Contratos: React.FC = () => {
       return
     }
 
+    if (!validateDates(formData.data_inicio, formData.data_fim)) {
+      return
+    }
+
     const dias = calculateDays(formData.data_inicio, formData.data_fim)
     const payload = {
       ...formData,
@@ -165,145 +242,305 @@ const Contratos: React.FC = () => {
   const dias = formData.data_inicio && formData.data_fim ? calculateDays(formData.data_inicio, formData.data_fim) : 0
   const valor_total = dias * formData.valor_diaria
 
-  const columns = [
-    {
-      key: 'numero' as const,
-      label: 'Número',
-      sortable: true,
-      width: '15%',
-    },
-    {
-      key: 'cliente_id' as const,
-      label: 'Cliente',
-      render: (_: any, row: any) => row.cliente?.nome || '-',
-    },
-    {
-      key: 'veiculo_id' as const,
-      label: 'Veículo',
-      render: (_: any, row: any) => `${row.veiculo?.marca} ${row.veiculo?.modelo}`,
-    },
-    {
-      key: 'data_inicio' as const,
-      label: 'Data Início',
-      render: (date: string) => formatDate(date),
-    },
-    {
-      key: 'data_fim' as const,
-      label: 'Data Fim',
-      render: (date: string) => formatDate(date),
-    },
-    {
-      key: 'valor_total' as const,
-      label: 'Valor',
-      render: (value: number) => formatCurrency(value),
-    },
-    {
-      key: 'status' as const,
-      label: 'Status',
-      render: (status: string) => <StatusBadge status={status} />,
-    },
-    {
-      key: 'id' as const,
-      label: 'Ações',
-      render: (_: any, row: Contrato) => (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleOpenModal(row)}
-            className="p-2 text-slate-600 hover:text-primary transition-colors"
-          >
-            <Edit size={16} />
-          </button>
-          <button
-            onClick={() => setDeleteConfirm({ isOpen: true, id: row.id })}
-            className="p-2 text-slate-600 hover:text-danger transition-colors"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ),
-    },
-  ]
+  const clienteInfo = clientes?.find((c) => c.id === formData.cliente_id)
+  const veiculoInfo = veiculos?.find((v) => v.id === formData.veiculo_id)
+
+  // Calculate KPIs
+  const kpis = useMemo(() => {
+    const contractsList = contratos?.data || []
+    const totalContratos = contratos?.total || 0
+    const ativos = contractsList.filter((c) => c.status === 'ativo').length
+    const atrasados = contractsList.filter((c) => c.status === 'atraso').length
+    const valorTotal = contractsList.reduce((sum, c) => sum + c.valor_total, 0)
+
+    return { totalContratos, ativos, atrasados, valorTotal }
+  }, [contratos])
+
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      ativo: 'badge-success',
+      finalizado: 'badge-info',
+      cancelado: 'badge-danger',
+      atraso: 'badge-warning',
+    }
+    return colors[status] || 'badge-info'
+  }
+
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      ativo: 'Ativo',
+      finalizado: 'Finalizado',
+      cancelado: 'Cancelado',
+      atraso: 'Atraso',
+    }
+    return labels[status] || status
+  }
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        {/* Page Header */}
+        <div className="page-header">
           <div>
-            <h1 className="text-3xl font-display font-bold text-slate-900">Contratos</h1>
-            <p className="text-slate-600 mt-1">Gerenciamento de contratos de aluguel</p>
+            <h1 className="page-title">Contratos</h1>
+            <p className="page-subtitle">Gerenciamento completo de contratos de aluguel</p>
           </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="btn-primary flex items-center gap-2"
-          >
+          <button onClick={() => handleOpenModal()} className="btn-primary flex items-center gap-2">
             <Plus size={20} />
             Novo Contrato
           </button>
         </div>
 
-        {/* Status Filter */}
-        <div className="flex gap-2 flex-wrap">
-          {['todos', 'ativo', 'finalizado', 'cancelado', 'atraso'].map((status) => (
-            <button
-              key={status}
-              onClick={() => {
-                setStatusFilter(status)
-                setPagination({ ...pagination, page: 1 })
-              }}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === status
-                  ? 'bg-primary text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {status === 'todos' ? 'Todos' : status.charAt(0).toUpperCase() + status.slice(1)}
-            </button>
-          ))}
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="kpi-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="kpi-label">Total de Contratos</p>
+                <p className="kpi-value">{kpis.totalContratos}</p>
+              </div>
+              <div className="kpi-icon bg-blue-100 text-blue-600">
+                <FileText size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="kpi-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="kpi-label">Contratos Ativos</p>
+                <p className="kpi-value text-green-600">{kpis.ativos}</p>
+              </div>
+              <div className="kpi-icon bg-green-100 text-green-600">
+                <CheckCircle size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="kpi-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="kpi-label">Atrasados</p>
+                <p className="kpi-value text-red-600">{kpis.atrasados}</p>
+              </div>
+              <div className="kpi-icon bg-red-100 text-red-600">
+                <AlertCircle size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="kpi-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="kpi-label">Valor Total</p>
+                <p className="kpi-value text-purple-600">{formatCurrency(kpis.valorTotal)}</p>
+              </div>
+              <div className="kpi-icon bg-purple-100 text-purple-600">
+                <DollarSign size={24} />
+              </div>
+            </div>
+          </div>
         </div>
 
+        {/* Filters and Search */}
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-3 text-slate-400" size={20} />
+              <input
+                type="text"
+                placeholder="Buscar por número, cliente ou veículo..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value)
+                  setPagination({ ...pagination, page: 1 })
+                }}
+                className="input-field pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="flex flex-wrap gap-2">
+            {['todos', 'ativo', 'finalizado', 'cancelado', 'atraso'].map((status) => (
+              <button
+                key={status}
+                onClick={() => {
+                  setStatusFilter(status as StatusFilter)
+                  setPagination({ ...pagination, page: 1 })
+                }}
+                className={`filter-tab ${statusFilter === status ? 'filter-tab-active' : 'filter-tab-inactive'}`}
+              >
+                {status === 'todos' ? 'Todos' : getStatusLabel(status)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Contracts Table */}
         <div className="card">
-          <DataTable
-            columns={columns}
-            data={contratos?.data || []}
-            isLoading={isLoading}
-            pagination={{
-              page: pagination.page,
-              limit: pagination.limit,
-              total: contratos?.total || 0,
-              onPageChange: (page) => setPagination({ ...pagination, page }),
-            }}
-          />
+          {isLoading ? (
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-12 bg-slate-100 rounded animate-pulse" />
+              ))}
+            </div>
+          ) : contratos?.data && contratos.data.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="table-header border-b border-slate-200">
+                    <th className="table-cell text-left">Número</th>
+                    <th className="table-cell text-left">Cliente</th>
+                    <th className="table-cell text-left">Veículo</th>
+                    <th className="table-cell text-left">Período</th>
+                    <th className="table-cell text-right">Valor</th>
+                    <th className="table-cell text-center">Status</th>
+                    <th className="table-cell text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contratos.data.map((contrato) => (
+                    <tr key={contrato.id} className="table-row hover:bg-slate-50">
+                      <td className="table-cell font-semibold text-slate-900">{contrato.numero}</td>
+                      <td className="table-cell text-slate-700">{contrato.cliente?.nome || '-'}</td>
+                      <td className="table-cell text-slate-700">
+                        {contrato.veiculo ? `${contrato.veiculo.marca} ${contrato.veiculo.modelo}` : '-'}
+                      </td>
+                      <td className="table-cell text-slate-600 text-sm">
+                        {formatDate(contrato.data_inicio)} a {formatDate(contrato.data_fim)}
+                      </td>
+                      <td className="table-cell text-right font-semibold text-slate-900">
+                        {formatCurrency(contrato.valor_total)}
+                      </td>
+                      <td className="table-cell text-center">
+                        <span className={`badge-success inline-block ${getStatusColor(contrato.status)}`}>
+                          {getStatusLabel(contrato.status)}
+                        </span>
+                      </td>
+                      <td className="table-cell text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleOpenModal(contrato)}
+                            className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Editar"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ isOpen: true, id: contrato.id })}
+                            className="p-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Deletar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                <p className="text-sm text-slate-600">
+                  Mostrando {contratos.data.length} de {contratos.total} contratos
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPagination({ ...pagination, page: Math.max(1, pagination.page - 1) })}
+                    disabled={pagination.page === 1}
+                    className="btn-secondary btn-sm disabled:opacity-50"
+                  >
+                    Anterior
+                  </button>
+                  <span className="px-4 py-2 text-sm font-medium text-slate-700">
+                    Página {pagination.page} de {Math.ceil((contratos.total || 0) / pagination.limit)}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setPagination({
+                        ...pagination,
+                        page: Math.min(
+                          Math.ceil((contratos.total || 0) / pagination.limit),
+                          pagination.page + 1
+                        ),
+                      })
+                    }
+                    disabled={pagination.page * pagination.limit >= (contratos.total || 0)}
+                    className="btn-secondary btn-sm disabled:opacity-50"
+                  >
+                    Próximo
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state-icon bg-slate-100">
+                <FileText className="text-slate-400" size={48} />
+              </div>
+              <h3 className="mt-4 font-semibold text-slate-900">Nenhum contrato encontrado</h3>
+              <p className="text-slate-600 mt-1">Crie seu primeiro contrato para começar</p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-96 overflow-y-auto p-6">
-            <h2 className="text-2xl font-display font-bold text-slate-900 mb-6">
-              {editingContract ? 'Editar Contrato' : 'Novo Contrato'}
-            </h2>
-
-            {/* Step Indicator */}
-            <div className="flex gap-2 mb-6">
-              {[1, 2, 3].map((s) => (
-                <div
-                  key={s}
-                  className={`flex-1 h-2 rounded-full ${
-                    s <= step ? 'bg-primary' : 'bg-slate-200'
-                  }`}
-                />
-              ))}
+        <div className="modal-overlay">
+          <div className="modal-content max-w-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {editingContract ? 'Editar Contrato' : 'Novo Contrato'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 hover:bg-slate-100 rounded transition-colors"
+              >
+                <X size={24} />
+              </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Step Indicator */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between">
+                {[1, 2, 3].map((s, index) => (
+                  <div key={s} className="flex items-center flex-1">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
+                        s <= step
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {s}
+                    </div>
+                    {index < 2 && (
+                      <div
+                        className={`flex-1 h-1 mx-2 transition-colors ${
+                          s < step ? 'bg-blue-600' : 'bg-slate-200'
+                        }`}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between mt-2 text-xs text-slate-600">
+                <span>Cliente & Veículo</span>
+                <span>Datas & Valores</span>
+                <span>Revisão</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
               {/* Step 1: Cliente e Veículo */}
               {step === 1 && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Cliente *
-                    </label>
+                    <label className="input-label">Cliente *</label>
                     <select
                       value={formData.cliente_id}
                       onChange={(e) => setFormData({ ...formData, cliente_id: e.target.value })}
@@ -319,9 +556,7 @@ const Contratos: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Veículo *
-                    </label>
+                    <label className="input-label">Veículo *</label>
                     <select
                       value={formData.veiculo_id}
                       onChange={(e) => setFormData({ ...formData, veiculo_id: e.target.value })}
@@ -335,6 +570,14 @@ const Contratos: React.FC = () => {
                       ))}
                     </select>
                   </div>
+
+                  {clienteInfo && veiculoInfo && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+                      <p className="text-sm text-blue-900">
+                        <strong>Resumo:</strong> {clienteInfo.nome} alugando {veiculoInfo.marca} {veiculoInfo.modelo}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -343,127 +586,165 @@ const Contratos: React.FC = () => {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Data Início *
-                      </label>
+                      <label className="input-label">Data Início *</label>
                       <input
                         type="date"
                         value={formData.data_inicio}
-                        onChange={(e) => setFormData({ ...formData, data_inicio: e.target.value })}
+                        onChange={(e) => handleDateChange('data_inicio', e.target.value)}
                         className="input-field"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Data Fim *
-                      </label>
+                      <label className="input-label">Data Fim *</label>
                       <input
                         type="date"
                         value={formData.data_fim}
-                        onChange={(e) => setFormData({ ...formData, data_fim: e.target.value })}
+                        onChange={(e) => handleDateChange('data_fim', e.target.value)}
                         className="input-field"
                       />
                     </div>
                   </div>
 
+                  {dateError && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2">
+                      <AlertCircle size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-800">{dateError}</p>
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Quilometragem Inicial
-                    </label>
+                    <label className="input-label">Quilometragem Inicial</label>
                     <input
                       type="number"
                       value={formData.quilometragem_inicial}
-                      onChange={(e) => setFormData({ ...formData, quilometragem_inicial: parseInt(e.target.value) })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, quilometragem_inicial: parseInt(e.target.value) || 0 })
+                      }
                       min="0"
                       className="input-field"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Valor Diária *
-                    </label>
+                    <label className="input-label">Valor da Diária *</label>
                     <input
                       type="number"
                       value={formData.valor_diaria}
-                      onChange={(e) => setFormData({ ...formData, valor_diaria: parseFloat(e.target.value) })}
+                      onChange={(e) => setFormData({ ...formData, valor_diaria: parseFloat(e.target.value) || 0 })}
                       step="0.01"
                       min="0"
                       className="input-field"
                     />
                   </div>
+
+                  {formData.data_inicio && formData.data_fim && !dateError && (
+                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Período:</span>
+                        <span className="font-semibold text-slate-900">{dias} dias</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="text-slate-600">Valor/Dia:</span>
+                        <span className="font-semibold text-slate-900">{formatCurrency(formData.valor_diaria)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-200">
+                        <span className="font-medium text-slate-900">Total:</span>
+                        <span className="font-bold text-blue-600 text-lg">{formatCurrency(valor_total)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Step 3: Review */}
               {step === 3 && (
-                <div className="space-y-4 bg-slate-50 p-4 rounded-lg">
-                  <div>
-                    <p className="text-sm text-slate-600">Cliente</p>
-                    <p className="font-semibold text-slate-900">
-                      {clientes?.find((c) => c.id === formData.cliente_id)?.nome}
-                    </p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="card bg-slate-50">
+                      <div className="flex items-start gap-3">
+                        <Users className="text-blue-600 flex-shrink-0 mt-1" size={20} />
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-600">Cliente</p>
+                          <p className="font-semibold text-slate-900 mt-1">{clienteInfo?.nome}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="card bg-slate-50">
+                      <div className="flex items-start gap-3">
+                        <FileText className="text-green-600 flex-shrink-0 mt-1" size={20} />
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-600">Veículo</p>
+                          <p className="font-semibold text-slate-900 mt-1">
+                            {veiculoInfo?.marca} {veiculoInfo?.modelo}
+                          </p>
+                          <p className="text-sm text-slate-600">{veiculoInfo?.placa}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="card bg-slate-50">
+                      <div className="flex items-start gap-3">
+                        <Calendar className="text-purple-600 flex-shrink-0 mt-1" size={20} />
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-600">Início</p>
+                          <p className="font-semibold text-slate-900 mt-1">{formatDate(formData.data_inicio)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="card bg-slate-50">
+                      <div className="flex items-start gap-3">
+                        <Clock className="text-orange-600 flex-shrink-0 mt-1" size={20} />
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-600">Fim</p>
+                          <p className="font-semibold text-slate-900 mt-1">{formatDate(formData.data_fim)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card bg-blue-50 border border-blue-200">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700">Período</span>
+                        <span className="font-semibold text-slate-900">{dias} dias</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700">Valor/Dia</span>
+                        <span className="font-semibold text-slate-900">{formatCurrency(formData.valor_diaria)}</span>
+                      </div>
+                      <div className="border-t border-blue-200 pt-3 flex justify-between items-center">
+                        <span className="font-bold text-blue-900">Valor Total</span>
+                        <span className="font-bold text-blue-600 text-xl">{formatCurrency(valor_total)}</span>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
-                    <p className="text-sm text-slate-600">Veículo</p>
-                    <p className="font-semibold text-slate-900">
-                      {veiculos?.find((v) => v.id === formData.veiculo_id)?.placa}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-slate-600">Data Início</p>
-                      <p className="font-semibold text-slate-900">{formatDate(formData.data_inicio)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-600">Data Fim</p>
-                      <p className="font-semibold text-slate-900">{formatDate(formData.data_fim)}</p>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-200 pt-4 mt-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-slate-600">Dias</p>
-                      <p className="font-semibold">{dias}</p>
-                    </div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-slate-600">Valor/Dia</p>
-                      <p className="font-semibold">{formatCurrency(formData.valor_diaria)}</p>
-                    </div>
-                    <div className="flex items-center justify-between bg-primary/10 p-3 rounded-lg">
-                      <p className="font-medium text-primary flex items-center gap-2">
-                        <DollarSign size={18} />
-                        Valor Total
-                      </p>
-                      <p className="font-bold text-primary text-lg">{formatCurrency(valor_total)}</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Observações
-                    </label>
+                    <label className="input-label">Observações</label>
                     <textarea
                       value={formData.observacoes}
                       onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
                       className="input-field"
                       rows={3}
+                      placeholder="Adicione observações sobre o contrato (opcional)"
                     />
                   </div>
                 </div>
               )}
 
-              {/* Buttons */}
-              <div className="flex gap-3 justify-between pt-4 border-t border-slate-200">
+              {/* Action Buttons */}
+              <div className="flex gap-3 justify-between pt-6 border-t border-slate-200">
                 <div className="flex gap-2">
                   {step > 1 && (
                     <button
                       type="button"
                       onClick={handlePrevStep}
-                      className="btn-secondary"
+                      className="btn-secondary btn-sm flex items-center gap-2"
                       disabled={createMutation.isPending || updateMutation.isPending}
                     >
                       Voltar
@@ -485,9 +766,10 @@ const Contratos: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleNextStep}
-                      className="btn-primary"
+                      className="btn-primary flex items-center gap-2"
                     >
                       Próximo
+                      <ChevronRight size={18} />
                     </button>
                   ) : (
                     <button
@@ -495,7 +777,7 @@ const Contratos: React.FC = () => {
                       className="btn-primary"
                       disabled={createMutation.isPending || updateMutation.isPending}
                     >
-                      {editingContract ? 'Atualizar' : 'Criar'} Contrato
+                      {createMutation.isPending || updateMutation.isPending ? 'Processando...' : 'Confirmar'}
                     </button>
                   )}
                 </div>
@@ -505,18 +787,39 @@ const Contratos: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        title="Deletar Contrato"
-        message="Tem certeza que deseja deletar este contrato? Esta ação não pode ser desfeita."
-        confirmText="Deletar"
-        cancelText="Cancelar"
-        isDanger={true}
-        isLoading={deleteMutation.isPending}
-        onConfirm={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
-        onCancel={() => setDeleteConfirm({ isOpen: false })}
-      />
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.isOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-sm">
+            <div className="flex items-start gap-4">
+              <div className="bg-red-100 rounded-lg p-3">
+                <AlertCircle className="text-red-600" size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-slate-900">Deletar Contrato?</h3>
+                <p className="text-slate-600 text-sm mt-1">Esta ação não pode ser desfeita. O contrato será removido do sistema.</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6 pt-6 border-t border-slate-200">
+              <button
+                onClick={() => setDeleteConfirm({ isOpen: false })}
+                className="btn-secondary flex-1"
+                disabled={deleteMutation.isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteConfirm.id && deleteMutation.mutate(deleteConfirm.id)}
+                className="btn-danger flex-1"
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deletando...' : 'Deletar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

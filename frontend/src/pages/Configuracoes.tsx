@@ -2,10 +2,13 @@ import React, { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import AppLayout from '@/components/layout/AppLayout'
 import toast from 'react-hot-toast'
+import { Settings, Building2, User, Sliders } from 'lucide-react'
 
 const Configuracoes: React.FC = () => {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'empresa' | 'user' | 'system'>('empresa')
+  const [activeTab, setActiveTab] = useState<'empresa' | 'usuario' | 'sistema'>('empresa')
+  const [isSaving, setIsSaving] = useState(false)
+
   const [empresaForm, setEmpresaForm] = useState({
     nome: 'MPCARS Brasil',
     cnpj: '00.000.000/0000-00',
@@ -20,7 +23,10 @@ const Configuracoes: React.FC = () => {
   const [userForm, setUserForm] = useState({
     nome: user?.nome || '',
     email: user?.email || '',
-    role: user?.role || '',
+    role: user?.role || 'Administrador',
+    senhaAtual: '',
+    senhaNova: '',
+    confirmarSenha: '',
   })
 
   const [systemForm, setSystemForm] = useState({
@@ -32,211 +38,296 @@ const Configuracoes: React.FC = () => {
     taxa_juros: 2,
   })
 
-  const handleSaveEmpresa = () => {
-    toast.success('Configurações da empresa salvas com sucesso!')
+  const handleSaveEmpresa = async () => {
+    setIsSaving(true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      toast.success('Configurações da empresa salvas com sucesso!')
+    } catch (error) {
+      toast.error('Erro ao salvar configurações')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleSaveUser = () => {
-    toast.success('Dados do usuário atualizados com sucesso!')
+  const handleSaveUser = async () => {
+    if (userForm.senhaNova && userForm.senhaNova !== userForm.confirmarSenha) {
+      toast.error('As senhas não conferem')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      toast.success('Dados do usuário atualizados com sucesso!')
+      setUserForm({ ...userForm, senhaAtual: '', senhaNova: '', confirmarSenha: '' })
+    } catch (error) {
+      toast.error('Erro ao atualizar dados do usuário')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleSaveSystem = () => {
-    toast.success('Configurações do sistema salvas com sucesso!')
+  const handleSaveSystem = async () => {
+    setIsSaving(true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      toast.success('Configurações do sistema salvas com sucesso!')
+    } catch (error) {
+      toast.error('Erro ao salvar configurações')
+    } finally {
+      setIsSaving(false)
+    }
   }
+
+  const tabs = [
+    { id: 'empresa', label: 'Empresa', icon: Building2 },
+    { id: 'usuario', label: 'Usuário', icon: User },
+    { id: 'sistema', label: 'Sistema', icon: Sliders },
+  ]
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-display font-bold text-slate-900">Configurações</h1>
-          <p className="text-slate-600 mt-1">Gerencie as configurações do sistema</p>
+          <h1 className="page-title flex items-center gap-2">
+            <Settings className="text-slate-700" size={32} />
+            Configurações
+          </h1>
+          <p className="page-subtitle">Gerencie as configurações da empresa, seu perfil e do sistema</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 border-b border-slate-200">
-          {['empresa', 'user', 'system'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
-              className={`px-6 py-3 font-medium transition-colors border-b-2 ${
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {tab === 'empresa' && 'Empresa'}
-              {tab === 'user' && 'Usuário'}
-              {tab === 'system' && 'Sistema'}
-            </button>
-          ))}
+        <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
+          {tabs.map((tab) => {
+            const IconComponent = tab.icon
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-6 py-3 font-medium transition-colors border-b-2 flex items-center gap-2 whitespace-nowrap ${
+                  isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <IconComponent size={18} />
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
 
-        {/* Empresa Tab */}
         {activeTab === 'empresa' && (
-          <div className="card max-w-2xl">
-            <h2 className="text-lg font-display font-bold text-slate-900 mb-6">Dados da Empresa</h2>
+          <div className="card max-w-3xl">
+            <h2 className="text-xl font-display font-bold text-slate-900 mb-6">Dados da Empresa</h2>
 
             <form className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Nome</label>
+                  <label className="input-label">Nome da Empresa</label>
                   <input
                     type="text"
                     value={empresaForm.nome}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, nome: e.target.value })}
                     className="input-field"
+                    placeholder="MPCARS Brasil"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">CNPJ</label>
+                  <label className="input-label">CNPJ</label>
                   <input
                     type="text"
                     value={empresaForm.cnpj}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, cnpj: e.target.value })}
                     className="input-field"
+                    placeholder="00.000.000/0000-00"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                  <label className="input-label">Email Comercial</label>
                   <input
                     type="email"
                     value={empresaForm.email}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, email: e.target.value })}
                     className="input-field"
+                    placeholder="contato@empresa.com"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Telefone</label>
+                  <label className="input-label">Telefone</label>
                   <input
                     type="tel"
                     value={empresaForm.telefone}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, telefone: e.target.value })}
                     className="input-field"
+                    placeholder="(11) 9999-9999"
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Endereço</label>
+                  <label className="input-label">Endereço</label>
                   <input
                     type="text"
                     value={empresaForm.endereco}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, endereco: e.target.value })}
                     className="input-field"
+                    placeholder="Rua, número, complemento"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Cidade</label>
+                  <label className="input-label">Cidade</label>
                   <input
                     type="text"
                     value={empresaForm.cidade}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, cidade: e.target.value })}
                     className="input-field"
+                    placeholder="São Paulo"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Estado</label>
+                  <label className="input-label">Estado</label>
                   <input
                     type="text"
                     value={empresaForm.estado}
-                    onChange={(e) => setEmpresaForm({ ...empresaForm, estado: e.target.value })}
+                    onChange={(e) => setEmpresaForm({ ...empresaForm, estado: e.target.value.toUpperCase() })}
                     maxLength={2}
                     className="input-field"
+                    placeholder="SP"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">CEP</label>
+                  <label className="input-label">CEP</label>
                   <input
                     type="text"
                     value={empresaForm.cep}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, cep: e.target.value })}
                     className="input-field"
+                    placeholder="01234-567"
                   />
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveEmpresa}
-                className="btn-primary"
-              >
-                Salvar Configurações
-              </button>
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={handleSaveEmpresa}
+                  className="btn-primary"
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+                </button>
+              </div>
             </form>
           </div>
         )}
 
-        {/* User Tab */}
-        {activeTab === 'user' && (
-          <div className="card max-w-2xl">
-            <h2 className="text-lg font-display font-bold text-slate-900 mb-6">Dados do Usuário</h2>
-
-            <form className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Nome</label>
-                <input
-                  type="text"
-                  value={userForm.nome}
-                  onChange={(e) => setUserForm({ ...userForm, nome: e.target.value })}
-                  className="input-field"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-                <input
-                  type="email"
-                  value={userForm.email}
-                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                  className="input-field"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Função</label>
-                <input
-                  type="text"
-                  value={userForm.role}
-                  disabled
-                  className="input-field disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <p className="text-xs text-slate-500 mt-1">A função não pode ser alterada aqui</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Alterar Senha</label>
-                <input
-                  type="password"
-                  placeholder="Digite a nova senha"
-                  className="input-field"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSaveUser}
-                className="btn-primary"
-              >
-                Atualizar Dados
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* System Tab */}
-        {activeTab === 'system' && (
-          <div className="card max-w-2xl">
-            <h2 className="text-lg font-display font-bold text-slate-900 mb-6">Configurações do Sistema</h2>
+        {activeTab === 'usuario' && (
+          <div className="card max-w-3xl">
+            <h2 className="text-xl font-display font-bold text-slate-900 mb-6">Dados do Usuário</h2>
 
             <form className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Idioma</label>
+                  <label className="input-label">Nome Completo</label>
+                  <input
+                    type="text"
+                    value={userForm.nome}
+                    onChange={(e) => setUserForm({ ...userForm, nome: e.target.value })}
+                    className="input-field"
+                    placeholder="Seu nome"
+                  />
+                </div>
+
+                <div>
+                  <label className="input-label">Email</label>
+                  <input
+                    type="email"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    className="input-field"
+                    placeholder="seu.email@empresa.com"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="input-label">Função</label>
+                  <input
+                    type="text"
+                    value={userForm.role}
+                    disabled
+                    className="input-field disabled:opacity-60 disabled:cursor-not-allowed bg-slate-50"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">A função não pode ser alterada. Contacte um administrador para mudanças de permissões.</p>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Alterar Senha</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="input-label">Senha Atual</label>
+                    <input
+                      type="password"
+                      value={userForm.senhaAtual}
+                      onChange={(e) => setUserForm({ ...userForm, senhaAtual: e.target.value })}
+                      className="input-field"
+                      placeholder="Digite sua senha atual"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="input-label">Nova Senha</label>
+                      <input
+                        type="password"
+                        value={userForm.senhaNova}
+                        onChange={(e) => setUserForm({ ...userForm, senhaNova: e.target.value })}
+                        className="input-field"
+                        placeholder="Digite a nova senha"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="input-label">Confirmar Senha</label>
+                      <input
+                        type="password"
+                        value={userForm.confirmarSenha}
+                        onChange={(e) => setUserForm({ ...userForm, confirmarSenha: e.target.value })}
+                        className="input-field"
+                        placeholder="Confirme a nova senha"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={handleSaveUser}
+                  className="btn-primary"
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Salvando...' : 'Atualizar Dados'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {activeTab === 'sistema' && (
+          <div className="card max-w-3xl">
+            <h2 className="text-xl font-display font-bold text-slate-900 mb-6">Configurações do Sistema</h2>
+
+            <form className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="input-label">Idioma</label>
                   <select
                     value={systemForm.idioma}
                     onChange={(e) => setSystemForm({ ...systemForm, idioma: e.target.value })}
@@ -244,12 +335,12 @@ const Configuracoes: React.FC = () => {
                   >
                     <option value="pt-BR">Português (Brasil)</option>
                     <option value="en-US">English (USA)</option>
-                    <option value="es-ES">Español</option>
+                    <option value="es-ES">Español (España)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Tema</label>
+                  <label className="input-label">Tema da Interface</label>
                   <select
                     value={systemForm.tema}
                     onChange={(e) => setSystemForm({ ...systemForm, tema: e.target.value })}
@@ -257,61 +348,78 @@ const Configuracoes: React.FC = () => {
                   >
                     <option value="light">Claro</option>
                     <option value="dark">Escuro</option>
-                    <option value="auto">Automático</option>
+                    <option value="auto">Automático (Sistema)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Valor Diária Padrão</label>
+                  <label className="input-label">Valor Diária Padrão (R$)</label>
                   <input
                     type="number"
                     value={systemForm.valor_diaria_padrao}
                     onChange={(e) => setSystemForm({ ...systemForm, valor_diaria_padrao: parseFloat(e.target.value) })}
+                    min="0"
+                    step="0.01"
                     className="input-field"
+                    placeholder="150,00"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Taxa de Juros (%)</label>
+                  <label className="input-label">Taxa de Juros Padrão (%)</label>
                   <input
                     type="number"
                     value={systemForm.taxa_juros}
                     onChange={(e) => setSystemForm({ ...systemForm, taxa_juros: parseFloat(e.target.value) })}
                     step="0.01"
+                    min="0"
                     className="input-field"
+                    placeholder="2,00"
                   />
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={systemForm.notificacoes_email}
-                    onChange={(e) => setSystemForm({ ...systemForm, notificacoes_email: e.target.checked })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium text-slate-700">Receber notificações por Email</span>
-                </label>
+              <div className="border-t border-slate-200 pt-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Notificações</h3>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded hover:bg-slate-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={systemForm.notificacoes_email}
+                      onChange={(e) => setSystemForm({ ...systemForm, notificacoes_email: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-300"
+                    />
+                    <div>
+                      <span className="font-medium text-slate-900 block">Notificações por Email</span>
+                      <span className="text-sm text-slate-500">Receba alertas importantes por e-mail</span>
+                    </div>
+                  </label>
 
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={systemForm.notificacoes_sms}
-                    onChange={(e) => setSystemForm({ ...systemForm, notificacoes_sms: e.target.checked })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium text-slate-700">Receber notificações por SMS</span>
-                </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded hover:bg-slate-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={systemForm.notificacoes_sms}
+                      onChange={(e) => setSystemForm({ ...systemForm, notificacoes_sms: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-300"
+                    />
+                    <div>
+                      <span className="font-medium text-slate-900 block">Notificações por SMS</span>
+                      <span className="text-sm text-slate-500">Receba alertas críticos por mensagem de texto</span>
+                    </div>
+                  </label>
+                </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveSystem}
-                className="btn-primary"
-              >
-                Salvar Configurações
-              </button>
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={handleSaveSystem}
+                  className="btn-primary"
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+                </button>
+              </div>
             </form>
           </div>
         )}
