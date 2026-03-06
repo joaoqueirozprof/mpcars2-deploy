@@ -255,5 +255,7 @@ def delete_seguro(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Seguro não encontrado"
         )
+    # Delete parcelas first (FK constraint)
+    db.query(ParcelaSeguro).filter(ParcelaSeguro.seguro_id == seguro_id).delete(synchronize_session=False)
     db.delete(seguro)
     db.commit()

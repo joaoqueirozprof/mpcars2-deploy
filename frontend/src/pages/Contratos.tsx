@@ -100,6 +100,18 @@ const Contratos: React.FC = () => {
     observacoes: '',
   })
 
+  // Fetch system configs (valor_diaria_padrao)
+  const { data: configs } = useQuery({
+    queryKey: ['configuracoes'],
+    queryFn: async () => {
+      const { data } = await api.get('/configuracoes/')
+      const map: Record<string, string> = {}
+      data.forEach((c: any) => { map[c.chave] = c.valor })
+      return map
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data: contratos, isLoading } = useQuery({
     queryKey: ['contratos', pagination, statusFilter, searchTerm],
     queryFn: async () => {
@@ -174,13 +186,16 @@ const Contratos: React.FC = () => {
   })
 
   const resetForm = () => {
+    const valorDiariaPadrao = configs?.sistema_valor_diaria_padrao
+      ? parseFloat(configs.sistema_valor_diaria_padrao)
+      : (configs?.valor_diaria_padrao ? parseFloat(configs.valor_diaria_padrao) : 0)
     setFormData({
       cliente_id: '',
       veiculo_id: '',
       data_inicio: '',
       data_fim: '',
       quilometragem_inicial: 0,
-      valor_diaria: 0,
+      valor_diaria: valorDiariaPadrao || 0,
       observacoes: '',
     })
     setEditingContract(null)

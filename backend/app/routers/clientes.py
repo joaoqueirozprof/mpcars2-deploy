@@ -8,7 +8,11 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.pagination import paginate
 from app.models.user import User
-from app.models import Cliente, Empresa
+from app.models import (
+    Cliente, Empresa, Contrato, Reserva, Multa, MotoristaEmpresa,
+    Quilometragem, DespesaContrato, ProrrogacaoContrato, CheckinCheckout,
+    UsoVeiculoEmpresa,
+)
 
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
@@ -218,11 +222,26 @@ def delete_cliente(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a client."""
+    """Delete a client and all related records."""
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Cliente não encontrado"
         )
+    # Delete contrato dependents first, then contratos
+    contratos = db.query(Contrato).filter(Contrato.cliente_id == cliente_id).all()
+    contrato_ids = [c.id for c in contratos]
+    if contrato_ids:
+        db.query(Quilometragem).filter(Quilometragem.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(DespesaContrato).filter(DespesaContrato.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(ProrrogacaoContrato).filter(ProrrogacaoContrato.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(CheckinCheckout).filter(CheckinCheckout.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(Multa).filter(Multa.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.contrato_id.in_(contrato_ids)).delete(synchronize_session=False)
+        db.query(Contrato).filter(Contrato.cliente_id == cliente_id).delete(synchronize_session=False)
+    # Delete other direct dependents
+    db.query(Reserva).filter(Reserva.cliente_id == cliente_id).delete(synchronize_session=False)
+    db.query(Multa).filter(Multa.cliente_id == cliente_id).delete(synchronize_session=False)
+    db.query(MotoristaEmpresa).filter(MotoristaEmpresa.cliente_id == cliente_id).delete(synchronize_session=False)
     db.delete(cliente)
     db.commit()

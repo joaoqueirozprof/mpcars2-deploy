@@ -240,6 +240,52 @@ def criar_despesa_loja(
     return db_despesa
 
 
+@router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_registro_financeiro(
+    record_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a financial record by composite id (e.g. c-1, dc-5, dv-3, dl-2)."""
+    parts = record_id.split("-", 1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=400, detail="ID invalido")
+
+    prefix, id_str = parts
+    try:
+        real_id = int(id_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID invalido")
+
+    if prefix == "dc":
+        obj = db.query(DespesaContrato).filter(DespesaContrato.id == real_id).first()
+    elif prefix == "dv":
+        obj = db.query(DespesaVeiculo).filter(DespesaVeiculo.id == real_id).first()
+    elif prefix == "dl":
+        obj = db.query(DespesaLoja).filter(DespesaLoja.id == real_id).first()
+    elif prefix == "c":
+        # Deleting a contrato from financeiro - delete dependents first
+        from app.models import Quilometragem, ProrrogacaoContrato, CheckinCheckout, Multa, UsoVeiculoEmpresa
+        contrato = db.query(Contrato).filter(Contrato.id == real_id).first()
+        if not contrato:
+            raise HTTPException(status_code=404, detail="Registro nao encontrado")
+        db.query(Quilometragem).filter(Quilometragem.contrato_id == real_id).delete(synchronize_session=False)
+        db.query(DespesaContrato).filter(DespesaContrato.contrato_id == real_id).delete(synchronize_session=False)
+        db.query(ProrrogacaoContrato).filter(ProrrogacaoContrato.contrato_id == real_id).delete(synchronize_session=False)
+        db.query(CheckinCheckout).filter(CheckinCheckout.contrato_id == real_id).delete(synchronize_session=False)
+        db.query(Multa).filter(Multa.contrato_id == real_id).delete(synchronize_session=False)
+        db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.contrato_id == real_id).delete(synchronize_session=False)
+        obj = contrato
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de registro desconhecido")
+
+    if not obj:
+        raise HTTPException(status_code=404, detail="Registro nao encontrado")
+
+    db.delete(obj)
+    db.commit()
+
+
 @router.get("/faturamento")
 def get_faturamento(
     mes: Optional[int] = None,

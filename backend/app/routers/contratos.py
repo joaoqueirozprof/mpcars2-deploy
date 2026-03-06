@@ -15,6 +15,9 @@ from app.models import (
     DespesaContrato,
     Quilometragem,
     ProrrogacaoContrato,
+    CheckinCheckout,
+    Multa,
+    UsoVeiculoEmpresa,
 )
 from app.services.pdf_service import PDFService
 
@@ -298,11 +301,18 @@ def delete_contrato(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a contract."""
+    """Delete a contract and all related records."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
     if not contrato:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Contrato não encontrado"
         )
+    # Delete all dependent records first
+    db.query(Quilometragem).filter(Quilometragem.contrato_id == contrato_id).delete(synchronize_session=False)
+    db.query(DespesaContrato).filter(DespesaContrato.contrato_id == contrato_id).delete(synchronize_session=False)
+    db.query(ProrrogacaoContrato).filter(ProrrogacaoContrato.contrato_id == contrato_id).delete(synchronize_session=False)
+    db.query(CheckinCheckout).filter(CheckinCheckout.contrato_id == contrato_id).delete(synchronize_session=False)
+    db.query(Multa).filter(Multa.contrato_id == contrato_id).delete(synchronize_session=False)
+    db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.contrato_id == contrato_id).delete(synchronize_session=False)
     db.delete(contrato)
     db.commit()
