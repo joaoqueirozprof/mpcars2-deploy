@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+from typing import List, Optional
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.deps import get_current_user
-from app.models.user import User
+from app.models.user import User, ALL_PAGES
+from app.services.activity_logger import log_activity
 from pydantic import BaseModel, EmailStr
 
 
@@ -33,6 +35,7 @@ class UserResponse(BaseModel):
     nome: str
     perfil: str
     ativo: bool
+    permitted_pages: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -44,8 +47,15 @@ class LoginResponse(BaseModel):
     user: UserResponse
 
 
+def _get_user_pages(user: User) -> list:
+    """Get permitted pages for a user. Admin gets all pages."""
+    if user.perfil == "admin":
+        return ALL_PAGES
+    return user.permitted_pages or []
+
+
 @router.post("/login", response_model=LoginResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+def login(request: LoginRequest, req: Request, db: Session = Depends(get_db)):
     """Login with email and password."""
     user = db.query(User).filter(User.email == request.email).first()
     if not user or not verify_password(request.password, user.hashed_password):
@@ -60,6 +70,10 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         )
 
     access_token = create_access_token(data={"sub": user.email})
+
+    # Log login activity
+    log_activity(db, user, "LOGIN", "auth", f"Login realizado: {user.nome}", request=req)
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -69,6 +83,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             "nome": user.nome,
             "perfil": user.perfil,
             "ativo": user.ativo,
+            "permitted_pages": _get_user_pages(user),
         },
     }
 
@@ -90,6 +105,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         nome=request.nome,
         perfil=request.perfil,
         ativo=True,
+        permitted_pages=[],
     )
     db.add(new_user)
     db.commit()
@@ -102,7 +118,14 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user information."""
-    return current_user
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "nome": current_user.nome,
+        "perfil": current_user.perfil,
+        "ativo": current_user.ativo,
+        "permitted_pages": _get_user_pages(current_user),
+    }
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -155,4 +178,11 @@ def update_profile(
         current_user.email = email
     db.commit()
     db.refresh(current_user)
-    return current_user
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "nome": current_user.nome,
+        "perfil": current_user.perfil,
+        "ativo": current_user.ativo,
+        "permitted_pages": _get_user_pages(current_user),
+    }

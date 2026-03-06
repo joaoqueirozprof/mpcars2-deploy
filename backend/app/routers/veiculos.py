@@ -1,7 +1,7 @@
 import os
 import uuid
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ from app.models import (
     UsoVeiculoEmpresa, RelatorioNF, DespesaNF, Quilometragem,
     DespesaContrato, ProrrogacaoContrato, CheckinCheckout,
 )
+from app.services.activity_logger import log_activity
 
 
 UPLOAD_DIR = "/app/uploads/veiculos"
@@ -207,6 +208,7 @@ async def upload_veiculo_foto(
     foto: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Upload a photo for a vehicle."""
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
@@ -249,6 +251,7 @@ async def upload_veiculo_foto(
     veiculo.foto_url = filename
     db.commit()
     db.refresh(veiculo)
+    log_activity(db, current_user, "EDITAR", "Veiculo", f"Foto do veículo {veiculo.placa} atualizada", veiculo_id, request)
 
     return {
         "message": "Foto enviada com sucesso",
@@ -262,6 +265,7 @@ def delete_veiculo_foto(
     veiculo_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Delete a vehicle photo."""
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
@@ -276,6 +280,7 @@ def delete_veiculo_foto(
             os.remove(file_path)
         veiculo.foto_url = None
         db.commit()
+        log_activity(db, current_user, "EXCLUIR", "Veiculo", f"Foto do veículo {veiculo.placa} removida", veiculo_id, request)
 
     return {"message": "Foto removida com sucesso"}
 
@@ -285,6 +290,7 @@ def create_veiculo(
     veiculo: VeiculoCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create a new vehicle."""
     existing = db.query(Veiculo).filter(Veiculo.placa == veiculo.placa).first()
@@ -297,6 +303,7 @@ def create_veiculo(
     db.add(db_veiculo)
     db.commit()
     db.refresh(db_veiculo)
+    log_activity(db, current_user, "CRIAR", "Veiculo", f"Veículo {db_veiculo.placa} criado", db_veiculo.id, request)
     return db_veiculo
 
 
@@ -321,6 +328,7 @@ def update_veiculo(
     veiculo_data: VeiculoUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Update a vehicle."""
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
@@ -335,6 +343,7 @@ def update_veiculo(
 
     db.commit()
     db.refresh(veiculo)
+    log_activity(db, current_user, "EDITAR", "Veiculo", f"Veículo {veiculo.placa} editado", veiculo_id, request)
     return veiculo
 
 
@@ -344,6 +353,7 @@ def patch_veiculo(
     veiculo_data: VeiculoUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Partially update a vehicle."""
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
@@ -358,6 +368,7 @@ def patch_veiculo(
 
     db.commit()
     db.refresh(veiculo)
+    log_activity(db, current_user, "EDITAR", "Veiculo", f"Veículo {veiculo.placa} editado", veiculo_id, request)
     return veiculo
 
 
@@ -366,6 +377,7 @@ def delete_veiculo(
     veiculo_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Delete a vehicle and all related records."""
     veiculo = db.query(Veiculo).filter(Veiculo.id == veiculo_id).first()
@@ -424,3 +436,4 @@ def delete_veiculo(
     # Finally delete the vehicle
     db.delete(veiculo)
     db.commit()
+    log_activity(db, current_user, "EXCLUIR", "Veiculo", f"Veículo {veiculo.placa} excluído", veiculo_id, request)

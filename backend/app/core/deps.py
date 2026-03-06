@@ -32,4 +32,22 @@ def get_current_user(
     if user is None:
         raise credentials_exception
 
+    if not user.ativo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuário inativo",
+        )
+
     return user
+
+
+def get_admin_user(
+    current_user=Depends(get_current_user),
+):
+    """Require admin user. Returns 403 if user is not admin."""
+    if current_user.perfil != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso restrito a administradores",
+        )
+    return current_user

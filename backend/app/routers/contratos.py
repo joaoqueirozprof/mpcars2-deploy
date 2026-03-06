@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
@@ -20,6 +20,7 @@ from app.models import (
     UsoVeiculoEmpresa,
 )
 from app.services.pdf_service import PDFService
+from app.services.activity_logger import log_activity
 
 
 router = APIRouter(prefix="/contratos", tags=["Contratos"])
@@ -128,6 +129,7 @@ def create_contrato(
     contrato: ContratoCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create a new contract."""
     existing = db.query(Contrato).filter(Contrato.numero == contrato.numero).first()
@@ -141,6 +143,7 @@ def create_contrato(
     db.add(db_contrato)
     db.commit()
     db.refresh(db_contrato)
+    log_activity(db, current_user, "CRIAR", "Contrato", f"Contrato {db_contrato.numero} criado", db_contrato.id, request)
     return db_contrato
 
 
@@ -165,6 +168,7 @@ def update_contrato(
     contrato_data: ContratoUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Update a contract."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
@@ -179,6 +183,7 @@ def update_contrato(
 
     db.commit()
     db.refresh(contrato)
+    log_activity(db, current_user, "EDITAR", "Contrato", f"Contrato {contrato.numero} editado", contrato_id, request)
     return contrato
 
 
@@ -187,6 +192,7 @@ def finalizar_contrato(
     contrato_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Finalize a contract."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
@@ -199,6 +205,7 @@ def finalizar_contrato(
     contrato.data_finalizacao = datetime.now()
     db.commit()
     db.refresh(contrato)
+    log_activity(db, current_user, "EDITAR", "Contrato", f"Contrato {contrato.numero} finalizado", contrato_id, request)
     return contrato
 
 
@@ -209,6 +216,7 @@ def prorrogar_contrato(
     motivo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Extend a contract."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
@@ -228,6 +236,7 @@ def prorrogar_contrato(
     contrato.data_fim = data_nova
     db.commit()
     db.refresh(contrato)
+    log_activity(db, current_user, "EDITAR", "Contrato", f"Contrato {contrato.numero} prorrogado", contrato_id, request)
     return contrato
 
 
@@ -274,6 +283,7 @@ def add_contrato_despesa(
     valor: float,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Add expense to a contract."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
@@ -292,6 +302,7 @@ def add_contrato_despesa(
     db.add(despesa)
     db.commit()
     db.refresh(despesa)
+    log_activity(db, current_user, "CRIAR", "DespesaContrato", f"Despesa de contrato criada: {descricao}", despesa.id, request)
     return despesa
 
 
@@ -300,6 +311,7 @@ def delete_contrato(
     contrato_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Delete a contract and all related records."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
@@ -316,3 +328,4 @@ def delete_contrato(
     db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.contrato_id == contrato_id).delete(synchronize_session=False)
     db.delete(contrato)
     db.commit()
+    log_activity(db, current_user, "EXCLUIR", "Contrato", f"Contrato {contrato.numero} excluído", contrato_id, request)

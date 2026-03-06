@@ -31,7 +31,7 @@ from app.models import (  # noqa - Import all models
     AuditLog,
     AlertaHistorico,
 )
-from app.models.user import User
+from app.models.user import User, ActivityLog
 from app.routers import (
     auth,
     clientes,
@@ -48,6 +48,7 @@ from app.routers import (
     relatorios,
     ipva,
     despesas_loja,
+    usuarios,
 )
 
 app = FastAPI(
@@ -96,6 +97,12 @@ def startup():
             if "qtd_parcelas" not in columns:
                 conn.execute(text("ALTER TABLE ipva_registro ADD COLUMN qtd_parcelas INTEGER"))
                 conn.commit()
+        # Add permitted_pages to users
+        if "users" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("users")]
+            if "permitted_pages" not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN permitted_pages JSON"))
+                conn.commit()
 
     # Run reports specification migration (add missing columns)
     try:
@@ -136,6 +143,7 @@ app.include_router(reservas.router, prefix=settings.API_V1_PREFIX, tags=["Reserv
 app.include_router(relatorios.router, prefix=settings.API_V1_PREFIX, tags=["Relatórios"])
 app.include_router(ipva.router, prefix=settings.API_V1_PREFIX, tags=["IPVA"])
 app.include_router(despesas_loja.router, prefix=settings.API_V1_PREFIX, tags=["Despesas Loja"])
+app.include_router(usuarios.router, prefix=settings.API_V1_PREFIX, tags=["Usuários"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '@/services/api'
 import { User } from '@/types'
 
@@ -9,6 +9,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   logout: () => void
   setUser: (user: User | null) => void
+  canAccess: (page: string) => boolean
+  isAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -77,8 +79,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null)
   }
 
+  const isAdmin = user?.perfil === 'admin'
+
+  const canAccess = useCallback((page: string): boolean => {
+    if (!user) return false
+    if (user.perfil === 'admin') return true
+    const pages = user.permitted_pages || []
+    return pages.includes(page)
+  }, [user])
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout, setUser, canAccess, isAdmin }}>
       {children}
     </AuthContext.Provider>
   )

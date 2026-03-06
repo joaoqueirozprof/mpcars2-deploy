@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.services.pdf_service import PDFService
 from app.services.export_service import ExportService
+from app.services.activity_logger import log_activity
 
 
 router = APIRouter(prefix="/financeiro", tags=["Financeiro"])
@@ -178,6 +179,7 @@ def criar_despesa_contrato(
     despesa: DespesaContratoCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create expense for contract."""
     contrato = db.query(Contrato).filter(
@@ -198,6 +200,7 @@ def criar_despesa_contrato(
     db.add(db_despesa)
     db.commit()
     db.refresh(db_despesa)
+    log_activity(db, current_user, "CRIAR", "DespesaContrato", f"Despesa de contrato criada: {despesa.descricao}", db_despesa.id, request)
     return db_despesa
 
 
@@ -206,6 +209,7 @@ def criar_despesa_veiculo(
     despesa: DespesaVeiculoCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create expense for vehicle."""
     db_despesa = DespesaVeiculo(
@@ -218,6 +222,7 @@ def criar_despesa_veiculo(
     db.add(db_despesa)
     db.commit()
     db.refresh(db_despesa)
+    log_activity(db, current_user, "CRIAR", "DespesaVeiculo", f"Despesa de veículo criada: {despesa.descricao}", db_despesa.id, request)
     return db_despesa
 
 
@@ -226,6 +231,7 @@ def criar_despesa_loja(
     despesa: DespesaLojaCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create shop expense."""
     db_despesa = DespesaLoja(
@@ -237,6 +243,7 @@ def criar_despesa_loja(
     db.add(db_despesa)
     db.commit()
     db.refresh(db_despesa)
+    log_activity(db, current_user, "CRIAR", "DespesaLoja", f"Despesa de loja criada: {despesa.descricao}", db_despesa.id, request)
     return db_despesa
 
 
@@ -245,6 +252,7 @@ def delete_registro_financeiro(
     record_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Delete a financial record by composite id (e.g. c-1, dc-5, dv-3, dl-2)."""
     parts = record_id.split("-", 1)
@@ -284,6 +292,7 @@ def delete_registro_financeiro(
 
     db.delete(obj)
     db.commit()
+    log_activity(db, current_user, "EXCLUIR", "Financeiro", f"Registro financeiro {record_id} excluído", real_id, request)
 
 
 @router.get("/faturamento")

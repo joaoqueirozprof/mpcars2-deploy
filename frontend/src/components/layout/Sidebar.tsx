@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   LayoutDashboard, Users, Car, FileText, Building2, DollarSign,
-  ShieldAlert, FileCheck, AlertCircle, Wrench, Calendar, BarChart3, Settings, Store
+  ShieldAlert, FileCheck, AlertCircle, Wrench, Calendar, BarChart3, Settings, Store, UserCog
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSidebar } from '@/contexts/SidebarContext'
@@ -11,25 +11,32 @@ import { cn } from '@/lib/utils'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, canAccess, isAdmin } = useAuth()
   const { isCollapsed, isMobileOpen, toggleCollapse, closeMobile } = useSidebar()
 
-  const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-    { icon: Users, label: 'Clientes', href: '/clientes' },
-    { icon: Car, label: 'Veiculos', href: '/veiculos' },
-    { icon: FileText, label: 'Contratos', href: '/contratos' },
-    { icon: Building2, label: 'Empresas', href: '/empresas' },
-    { icon: DollarSign, label: 'Financeiro', href: '/financeiro' },
-    { icon: ShieldAlert, label: 'Seguros', href: '/seguros' },
-    { icon: FileCheck, label: 'Licenciamento', href: '/ipva' },
-    { icon: AlertCircle, label: 'Multas', href: '/multas' },
-    { icon: Wrench, label: 'Manutencoes', href: '/manutencoes' },
-    { icon: Calendar, label: 'Reservas', href: '/reservas' },
-    { icon: Store, label: 'Despesas Loja', href: '/despesas-loja' },
-    { icon: BarChart3, label: 'Relatorios', href: '/relatorios' },
-    { icon: Settings, label: 'Configuracoes', href: '/configuracoes' },
+  const allMenuItems = [
+    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', slug: 'dashboard' },
+    { icon: Users, label: 'Clientes', href: '/clientes', slug: 'clientes' },
+    { icon: Car, label: 'Veiculos', href: '/veiculos', slug: 'veiculos' },
+    { icon: FileText, label: 'Contratos', href: '/contratos', slug: 'contratos' },
+    { icon: Building2, label: 'Empresas', href: '/empresas', slug: 'empresas' },
+    { icon: DollarSign, label: 'Financeiro', href: '/financeiro', slug: 'financeiro' },
+    { icon: ShieldAlert, label: 'Seguros', href: '/seguros', slug: 'seguros' },
+    { icon: FileCheck, label: 'Licenciamento', href: '/ipva', slug: 'ipva' },
+    { icon: AlertCircle, label: 'Multas', href: '/multas', slug: 'multas' },
+    { icon: Wrench, label: 'Manutencoes', href: '/manutencoes', slug: 'manutencoes' },
+    { icon: Calendar, label: 'Reservas', href: '/reservas', slug: 'reservas' },
+    { icon: Store, label: 'Despesas Loja', href: '/despesas-loja', slug: 'despesas-loja' },
+    { icon: BarChart3, label: 'Relatorios', href: '/relatorios', slug: 'relatorios' },
+    { icon: Settings, label: 'Configuracoes', href: '/configuracoes', slug: 'configuracoes' },
+    { icon: UserCog, label: 'Usuários', href: '/usuarios', slug: 'usuarios', adminOnly: true },
   ]
+
+  // Filter menu items by user permissions
+  const menuItems = allMenuItems.filter(item => {
+    if (item.adminOnly) return isAdmin
+    return canAccess(item.slug)
+  })
 
   const isActive = (href: string) => location.pathname === href
 

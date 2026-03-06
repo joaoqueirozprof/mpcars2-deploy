@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 # User model is imported from user.py
-from app.models.user import User
+from app.models.user import User, ActivityLog
 
 
 class Empresa(Base):

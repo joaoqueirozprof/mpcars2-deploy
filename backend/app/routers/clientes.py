@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from pydantic import BaseModel, EmailStr
@@ -13,6 +13,7 @@ from app.models import (
     Quilometragem, DespesaContrato, ProrrogacaoContrato, CheckinCheckout,
     UsoVeiculoEmpresa,
 )
+from app.services.activity_logger import log_activity
 
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
@@ -163,6 +164,7 @@ def create_cliente(
     cliente: ClienteCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create a new client."""
     existing = db.query(Cliente).filter(Cliente.cpf == cliente.cpf).first()
@@ -175,6 +177,7 @@ def create_cliente(
     db.add(db_cliente)
     db.commit()
     db.refresh(db_cliente)
+    log_activity(db, current_user, "CRIAR", "Cliente", f"Cliente {db_cliente.nome} criado", db_cliente.id, request)
     return db_cliente
 
 
@@ -199,6 +202,7 @@ def update_cliente(
     cliente_data: ClienteUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Update a client."""
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
@@ -213,6 +217,7 @@ def update_cliente(
 
     db.commit()
     db.refresh(cliente)
+    log_activity(db, current_user, "EDITAR", "Cliente", f"Cliente {cliente.nome} editado", cliente_id, request)
     return cliente
 
 
@@ -221,6 +226,7 @@ def delete_cliente(
     cliente_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Delete a client and all related records."""
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
@@ -245,3 +251,4 @@ def delete_cliente(
     db.query(MotoristaEmpresa).filter(MotoristaEmpresa.cliente_id == cliente_id).delete(synchronize_session=False)
     db.delete(cliente)
     db.commit()
+    log_activity(db, current_user, "EXCLUIR", "Cliente", f"Cliente {cliente.nome} excluído", cliente_id, request)

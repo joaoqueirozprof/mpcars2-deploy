@@ -2,9 +2,11 @@ export interface User {
   id: string;
   nome: string;
   email: string;
-  empresa_id: string;
-  role: 'admin' | 'gerente' | 'operador' | 'cliente';
+  empresa_id?: string;
+  perfil: string;
+  role?: 'admin' | 'gerente' | 'operador' | 'cliente';
   ativo: boolean;
+  permitted_pages?: string[];
 }
 
 export interface AuthResponse {

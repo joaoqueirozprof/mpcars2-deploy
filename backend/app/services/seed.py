@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from app.models.user import User
+from app.models.user import User, ALL_PAGES
 from app.models import (
     Configuracao, IpvaAliquota, Cliente, Veiculo, Contrato,
     Empresa, DespesaContrato, DespesaVeiculo, DespesaLoja,
@@ -23,9 +23,15 @@ def seed_database(db: Session):
             nome="Administrador",
             perfil="admin",
             ativo=True,
+            permitted_pages=ALL_PAGES,
         )
         db.add(admin_user)
         db.commit()
+    else:
+        # Ensure existing admin has all pages
+        if not admin_exists.permitted_pages or len(admin_exists.permitted_pages) < len(ALL_PAGES):
+            admin_exists.permitted_pages = ALL_PAGES
+            db.commit()
 
     # Check if configurations already exist
     config_count = db.query(Configuracao).count()
