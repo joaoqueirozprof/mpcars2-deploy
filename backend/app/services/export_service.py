@@ -1,4 +1,4 @@
-from io import BytesIO
+from io import BytesIO, StringIO
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -323,7 +323,7 @@ class ExportService:
         contratos = query.all()
 
         # Write CSV
-        text_buffer = BytesIO()
+        text_buffer = StringIO()
         text_writer = None
 
         for contrato, cliente, veiculo in contratos:
@@ -366,5 +366,7 @@ class ExportService:
                 }
             )
 
-        text_buffer.seek(0)
-        return text_buffer
+        # Convert StringIO to BytesIO for StreamingResponse
+        result = BytesIO(text_buffer.getvalue().encode('utf-8'))
+        result.seek(0)
+        return result
