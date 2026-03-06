@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { ConfigProvider } from '@/contexts/ConfigContext'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Clientes from '@/pages/Clientes'
@@ -77,7 +78,9 @@ const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
-          <AppRoutes />
+          <ConfigProvider>
+            <AppRoutes />
+          </ConfigProvider>
         </AuthProvider>
       </Router>
     </QueryClientProvider>

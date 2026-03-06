@@ -23,6 +23,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import { Contrato, Cliente, Veiculo, PaginatedResponse, PaginationParams } from '@/types'
 import { formatCurrency, formatDate, calculateDays } from '@/lib/utils'
 import toast from 'react-hot-toast'
+import { useConfig } from '@/contexts/ConfigContext'
 
 interface FormData {
   cliente_id: string
@@ -100,17 +101,8 @@ const Contratos: React.FC = () => {
     observacoes: '',
   })
 
-  // Fetch system configs (valor_diaria_padrao)
-  const { data: configs } = useQuery({
-    queryKey: ['configuracoes'],
-    queryFn: async () => {
-      const { data } = await api.get('/configuracoes/')
-      const map: Record<string, string> = {}
-      data.forEach((c: any) => { map[c.chave] = c.valor })
-      return map
-    },
-    staleTime: 5 * 60 * 1000,
-  })
+  // Use system config for valor_diaria_padrao
+  const config = useConfig()
 
   const { data: contratos, isLoading } = useQuery({
     queryKey: ['contratos', pagination, statusFilter, searchTerm],
@@ -186,16 +178,13 @@ const Contratos: React.FC = () => {
   })
 
   const resetForm = () => {
-    const valorDiariaPadrao = configs?.sistema_valor_diaria_padrao
-      ? parseFloat(configs.sistema_valor_diaria_padrao)
-      : (configs?.valor_diaria_padrao ? parseFloat(configs.valor_diaria_padrao) : 0)
     setFormData({
       cliente_id: '',
       veiculo_id: '',
       data_inicio: '',
       data_fim: '',
       quilometragem_inicial: 0,
-      valor_diaria: valorDiariaPadrao || 0,
+      valor_diaria: config.valor_diaria_padrao || 0,
       observacoes: '',
     })
     setEditingContract(null)

@@ -21,6 +21,185 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* === Dark Mode === */
+html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html.dark .card,
+html.dark .card-hover,
+html.dark .modal-content {
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+html.dark .input-field {
+  background-color: #1e293b;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+html.dark .input-field::placeholder {
+  color: #64748b;
+}
+
+html.dark .input-label {
+  color: #cbd5e1;
+}
+
+html.dark .table-header {
+  background-color: #1e293b;
+  color: #94a3b8;
+}
+
+html.dark .table-row {
+  border-color: #334155;
+}
+
+html.dark .table-row:hover {
+  background-color: #1e293b;
+}
+
+html.dark .table-cell {
+  color: #cbd5e1;
+}
+
+html.dark .page-title,
+html.dark .kpi-value {
+  color: #f1f5f9;
+}
+
+html.dark .page-subtitle,
+html.dark .kpi-label {
+  color: #94a3b8;
+}
+
+html.dark .filter-tab-inactive {
+  background-color: #1e293b;
+  color: #94a3b8;
+  border-color: #475569;
+}
+
+html.dark .filter-tab-inactive:hover {
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+html.dark .btn-secondary {
+  background-color: #334155;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+html.dark .btn-secondary:hover {
+  background-color: #475569;
+}
+
+html.dark .btn-ghost {
+  color: #94a3b8;
+}
+
+html.dark .btn-ghost:hover {
+  background-color: #1e293b;
+}
+
+html.dark .btn-icon {
+  color: #94a3b8;
+}
+
+html.dark .btn-icon:hover {
+  color: #38bdf8;
+  background-color: #1e293b;
+}
+
+html.dark .empty-state-icon {
+  background-color: #1e293b;
+}
+
+html.dark .skeleton {
+  background-color: #334155;
+}
+
+html.dark .modal-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+html.dark select {
+  background-color: #1e293b;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+html.dark .badge-neutral {
+  background-color: #334155;
+  color: #94a3b8;
+}
+
+/* Dark mode: generic overrides */
+html.dark .bg-slate-50,
+html.dark .bg-surface {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #334155 !important;
+}
+
+html.dark .text-slate-900 {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+html.dark .border-slate-200,
+html.dark .border-slate-100 {
+  border-color: #334155 !important;
+}
+
+html.dark .shadow-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark input[type="text"],
+html.dark input[type="number"],
+html.dark input[type="email"],
+html.dark input[type="date"],
+html.dark input[type="search"],
+html.dark input[type="password"],
+html.dark textarea {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+  color: #e2e8f0 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
