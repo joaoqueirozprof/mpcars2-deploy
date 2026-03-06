@@ -335,6 +335,10 @@ class PDFService:
             return y - car_h
 
         # --- LEFT COLUMN: LOCATARIO ---
+        lx = margin
+        lw = col_left_w
+        fh = 18  # field height
+
         y = y_line - 4
         y = draw_section_title(y, "LOCATARIO - RENTER", sec_x=lx, sec_w=col_left_w)
 
@@ -359,10 +363,6 @@ class PDFService:
         rg = cliente.rg or "" if cliente else ""
 
         # Left column fields
-        lx = margin
-        lw = col_left_w
-        fh = 18  # field height
-
         y = draw_field_box(lx, y, "NOME DO CLIENTE:", nome_cli, lw, fh)
         y = draw_field_box(lx, y, "ENDERECO COMERCIAL:", end_com, lw, fh)
 
