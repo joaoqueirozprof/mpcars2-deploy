@@ -1,294 +1,367 @@
-import React, { useState } from 'react'
-import { Download, FileText, BarChart3, TrendingUp, Users, Zap, Calendar, Printer, Eye, Trash2, FileSpreadsheet } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Download, FileText, DollarSign, Receipt, Users, Car, FileSpreadsheet, BarChart3, Printer } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import AppLayout from '@/components/layout/AppLayout'
 import toast from 'react-hot-toast'
 import api from '@/services/api'
 
-interface GeneratedReport {
-  id: string
-  name: string
-  type: string
-  date: string
-  url: string
-  status: 'gerando' | 'completo' | 'erro'
-}
-
 const Relatorios: React.FC = () => {
   const { user } = useAuth()
-  const [dateRange, setDateRange] = useState({ start: '', end: '' })
-  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [loading, setLoading] = useState<string | null>(null)
 
-  const reports = [
-    { id: 'contratos', name: 'Relatorio de Contratos', description: 'Lista completa de contratos com detalhes de clientes e valores', icon: FileText, color: 'blue', needsDate: true, pdfEndpoint: '/relatorios/contratos/pdf', xlsxEndpoint: '/relatorios/contratos/xlsx' },
-    { id: 'receitas', name: 'Relatorio de Receitas', description: 'Resumo de receitas por periodo, cliente e tipo de servico', icon: TrendingUp, color: 'green', needsDate: true, pdfEndpoint: '/relatorios/receitas/pdf', xlsxEndpoint: null },
-    { id: 'despesas', name: 'Relatorio de Despesas', description: 'Detalhamento de despesas por categoria e veiculo', icon: BarChart3, color: 'orange', needsDate: true, pdfEndpoint: '/relatorios/despesas/pdf', xlsxEndpoint: '/relatorios/despesas/xlsx' },
-    { id: 'frota', name: 'Relatorio de Frota', description: 'Status atual da frota, manutencao e disponibilidade', icon: Zap, color: 'purple', needsDate: false, pdfEndpoint: '/relatorios/frota/pdf', xlsxEndpoint: '/relatorios/veiculos/xlsx' },
-    { id: 'clientes', name: 'Relatorio de Clientes', description: 'Analise de clientes, historico de contratos e pagamentos', icon: Users, color: 'cyan', needsDate: false, pdfEndpoint: '/relatorios/clientes/pdf', xlsxEndpoint: '/relatorios/clientes/xlsx' },
-    { id: 'ipva', name: 'Relatorio de IPVA', description: 'Pendencias, pagamentos e historico de IPVA por veiculo', icon: Calendar, color: 'red', needsDate: false, pdfEndpoint: '/relatorios/ipva/pdf', xlsxEndpoint: null },
-  ]
+  // PDF states
+  const [contratoId, setContratoId] = useState('')
+  const [financeiroDates, setFinanceiroDates] = useState({ start: '', end: '' })
+  const [nfUsoId, setNfUsoId] = useState('')
+  const [contratos, setContratos] = useState<any[]>([])
+  const [usos, setUsos] = useState<any[]>([])
+
+  // Export states
+  const [exportDates, setExportDates] = useState({ start: '', end: '' })
+  const [exportStatus, setExportStatus] = useState('')
+
+  useEffect(() => {
+    loadContratos()
+    loadUsos()
+  }, [])
+
+  const loadContratos = async () => {
+    try {
+      const res = await api.get('/contratos/?limit=100')
+      setContratos(res.data?.data || res.data || [])
+    } catch { }
+  }
+
+  const loadUsos = async () => {
+    try {
+      const res = await api.get('/empresas/usos')
+      setUsos(res.data || [])
+    } catch { }
+  }
 
   const downloadFile = async (url: string, filename: string) => {
-    try {
-      const response = await api.get(url, { responseType: 'blob' })
-      const blob = new Blob([response.data], { type: response.headers['content-type'] })
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
-      return downloadUrl
-    } catch (error: any) {
-      console.error('Download error:', error)
-      throw error
-    }
+    const response = await api.get(url, { responseType: 'blob' })
+    const blob = new Blob([response.data], { type: response.headers['content-type'] })
+    const downloadUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(downloadUrl)
   }
 
-  const handleGenerateReport = async (report: typeof reports[0], format: 'pdf' | 'xlsx' | 'print') => {
-    if (report.needsDate && (!dateRange.start || !dateRange.end)) {
-      toast.error('Selecione o periodo do relatorio')
-      return
-    }
-
-    const endpoint = format === 'xlsx' ? report.xlsxEndpoint : report.pdfEndpoint
-    if (!endpoint) {
-      toast.error('Formato nao disponivel para este relatorio')
-      return
-    }
-
-    const loadingId = `${report.id}-${format}`
-    setLoading(loadingId)
-    const toastId = toast.loading(`Gerando ${report.name}...`)
-
+  const handlePdfContrato = async () => {
+    if (!contratoId) { toast.error('Informe o ID do contrato'); return }
+    setLoading('contrato-pdf')
+    const tid = toast.loading('Gerando PDF do contrato...')
     try {
-      let url = endpoint
-      if (report.needsDate) {
-        url += `?data_inicio=${dateRange.start}&data_fim=${dateRange.end}`
-      }
-
-      const ext = format === 'xlsx' ? 'xlsx' : 'pdf'
-      const filename = `${report.id}_${dateRange.start || 'geral'}_${dateRange.end || new Date().toISOString().split('T')[0]}.${ext}`
-
-      if (format === 'print') {
-        // For print: open PDF in new tab
-        const response = await api.get(url, { responseType: 'blob' })
-        const blob = new Blob([response.data], { type: 'application/pdf' })
-        const pdfUrl = window.URL.createObjectURL(blob)
-        const printWindow = window.open(pdfUrl, '_blank')
-        if (printWindow) {
-          printWindow.onload = () => {
-            printWindow.print()
-          }
-        }
-        toast.dismiss(toastId)
-        toast.success('PDF aberto para impressao!')
-      } else {
-        await downloadFile(url, filename)
-        toast.dismiss(toastId)
-        toast.success(`${report.name} gerado com sucesso!`)
-      }
-
-      // Add to generated reports list
-      const newReport: GeneratedReport = {
-        id: `${Date.now()}`,
-        name: `${report.name} - ${format.toUpperCase()}`,
-        type: format,
-        date: new Date().toLocaleString('pt-BR'),
-        url: endpoint,
-        status: 'completo',
-      }
-      setGeneratedReports(prev => [newReport, ...prev].slice(0, 10))
-
-    } catch (error: any) {
-      toast.dismiss(toastId)
-      const msg = error?.response?.data?.detail || 'Erro ao gerar relatorio'
+      await downloadFile(`/relatorios/contrato/${contratoId}/pdf`, `contrato_${contratoId}.pdf`)
+      toast.dismiss(tid)
+      toast.success('PDF do contrato gerado com sucesso!')
+    } catch (e: any) {
+      toast.dismiss(tid)
+      const msg = e?.response?.status === 404 ? 'Contrato nao encontrado' : e?.response?.status === 422 ? 'Contrato com dados incompletos' : 'Erro ao gerar PDF do contrato'
       toast.error(msg)
-    } finally {
-      setLoading(null)
-    }
+    } finally { setLoading(null) }
   }
 
-  const handleDeleteReport = (reportId: string) => {
-    setGeneratedReports(prev => prev.filter(r => r.id !== reportId))
-    toast.success('Relatorio removido da lista')
+  const handlePdfFinanceiro = async () => {
+    if (!financeiroDates.start || !financeiroDates.end) { toast.error('Selecione o periodo'); return }
+    setLoading('financeiro-pdf')
+    const tid = toast.loading('Gerando relatorio financeiro...')
+    try {
+      await downloadFile(`/relatorios/financeiro/pdf?data_inicio=${financeiroDates.start}&data_fim=${financeiroDates.end}`, `relatorio_financeiro_${financeiroDates.start}_${financeiroDates.end}.pdf`)
+      toast.dismiss(tid)
+      toast.success('Relatorio financeiro gerado com sucesso!')
+    } catch (e: any) {
+      toast.dismiss(tid)
+      toast.error(e?.response?.data?.detail || 'Erro ao gerar relatorio financeiro')
+    } finally { setLoading(null) }
   }
 
-  const getColorClasses = (color: string) => {
-    const colors: Record<string, string> = {
-      blue: 'bg-blue-50 text-blue-600 border-blue-200',
-      green: 'bg-green-50 text-green-600 border-green-200',
-      orange: 'bg-orange-50 text-orange-600 border-orange-200',
-      purple: 'bg-purple-50 text-purple-600 border-purple-200',
-      cyan: 'bg-cyan-50 text-cyan-600 border-cyan-200',
-      red: 'bg-red-50 text-red-600 border-red-200',
-    }
-    return colors[color] || colors.blue
+  const handlePdfNF = async () => {
+    if (!nfUsoId) { toast.error('Selecione o uso do veiculo'); return }
+    setLoading('nf-pdf')
+    const tid = toast.loading('Gerando Nota Fiscal...')
+    try {
+      await downloadFile(`/relatorios/nf/${nfUsoId}/pdf`, `nf_${nfUsoId}.pdf`)
+      toast.dismiss(tid)
+      toast.success('Nota Fiscal gerada com sucesso!')
+    } catch (e: any) {
+      toast.dismiss(tid)
+      const msg = e?.response?.status === 404 ? 'Uso de veiculo nao encontrado' : 'Erro ao gerar Nota Fiscal'
+      toast.error(msg)
+    } finally { setLoading(null) }
   }
 
-  const getIconColorClasses = (color: string) => {
-    const colors: Record<string, string> = {
-      blue: 'bg-blue-100 text-blue-700',
-      green: 'bg-green-100 text-green-700',
-      orange: 'bg-orange-100 text-orange-700',
-      purple: 'bg-purple-100 text-purple-700',
-      cyan: 'bg-cyan-100 text-cyan-700',
-      red: 'bg-red-100 text-red-700',
-    }
-    return colors[color] || colors.blue
+  const handleExport = async (entity: string, formato: string) => {
+    const key = `${entity}-${formato}`
+    setLoading(key)
+    const tid = toast.loading(`Exportando ${entity}...`)
+    try {
+      let url = `/relatorios/exportar/${entity}?formato=${formato}`
+      if (exportDates.start && exportDates.end) {
+        url += `&data_inicio=${exportDates.start}&data_fim=${exportDates.end}`
+      }
+      if (exportStatus && (entity === 'veiculos' || entity === 'contratos')) {
+        url += `&status=${exportStatus}`
+      }
+      const ext = formato
+      await downloadFile(url, `${entity}_${exportDates.start || 'geral'}.${ext}`)
+      toast.dismiss(tid)
+      toast.success(`${entity} exportado com sucesso!`)
+    } catch (e: any) {
+      toast.dismiss(tid)
+      toast.error(e?.response?.data?.detail || `Erro ao exportar ${entity}`)
+    } finally { setLoading(null) }
   }
+
+  const LoadingSpinner = () => (
+    <span className="animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></span>
+  )
 
   return (
     <AppLayout>
       <div className="space-y-8 stagger-children">
         <div>
           <h1 className="page-title">Relatorios</h1>
-          <p className="page-subtitle">Geracao e exportacao de relatorios do sistema com filtros por periodo</p>
+          <p className="page-subtitle">Geracao de PDFs e exportacao de dados do sistema</p>
         </div>
 
-        <div className="card">
-          <h2 className="text-lg font-display font-bold text-slate-900 mb-6">Filtro de Periodo</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="input-label">Data Inicio</label>
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="input-field"
-              />
+        {/* ====================== SEÇÃO 1: PDFs ====================== */}
+        <div>
+          <h2 className="text-xl font-display font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <FileText size={22} className="text-blue-600" />
+            Geracao de PDFs
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* Card: PDF Contrato */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 rounded-xl bg-blue-100 text-blue-700">
+                  <FileText size={24} />
+                </div>
+                <span className="badge badge-info text-xs">PDF</span>
+              </div>
+              <h3 className="text-lg font-display font-bold text-slate-900 mb-2">Contrato de Locacao</h3>
+              <p className="text-sm text-slate-600 mb-4">Gera o contrato completo com clausulas, vistoria e valores</p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="input-label">ID do Contrato</label>
+                  <select
+                    value={contratoId}
+                    onChange={(e) => setContratoId(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="">Selecione um contrato...</option>
+                    {contratos.map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        #{c.id} - {c.numero} ({c.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handlePdfContrato}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  disabled={loading === 'contrato-pdf' || !contratoId}
+                >
+                  {loading === 'contrato-pdf' ? <LoadingSpinner /> : <Download size={16} />}
+                  Gerar PDF
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="input-label">Data Fim</label>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="input-field"
-              />
+
+            {/* Card: PDF Financeiro */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 rounded-xl bg-green-100 text-green-700">
+                  <DollarSign size={24} />
+                </div>
+                <span className="badge badge-info text-xs">PDF</span>
+              </div>
+              <h3 className="text-lg font-display font-bold text-slate-900 mb-2">Relatorio Financeiro</h3>
+              <p className="text-sm text-slate-600 mb-4">Receitas, despesas, lucro e comparativo por categoria</p>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="input-label">Data Inicio</label>
+                    <input type="date" value={financeiroDates.start} onChange={(e) => setFinanceiroDates({ ...financeiroDates, start: e.target.value })} className="input-field" />
+                  </div>
+                  <div>
+                    <label className="input-label">Data Fim</label>
+                    <input type="date" value={financeiroDates.end} onChange={(e) => setFinanceiroDates({ ...financeiroDates, end: e.target.value })} className="input-field" />
+                  </div>
+                </div>
+                <button
+                  onClick={handlePdfFinanceiro}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  disabled={loading === 'financeiro-pdf' || !financeiroDates.start || !financeiroDates.end}
+                >
+                  {loading === 'financeiro-pdf' ? <LoadingSpinner /> : <Download size={16} />}
+                  Gerar PDF
+                </button>
+              </div>
             </div>
-            <div className="flex items-end">
-              <button
-                className="btn-primary w-full"
-                onClick={() => {
-                  if (dateRange.start && dateRange.end) {
-                    toast.success('Periodo atualizado')
-                  } else {
-                    toast.error('Selecione ambas as datas')
-                  }
-                }}
-              >
-                Aplicar Filtro
-              </button>
+
+            {/* Card: PDF NF */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 rounded-xl bg-orange-100 text-orange-700">
+                  <Receipt size={24} />
+                </div>
+                <span className="badge badge-info text-xs">PDF</span>
+              </div>
+              <h3 className="text-lg font-display font-bold text-slate-900 mb-2">Nota Fiscal de Uso</h3>
+              <p className="text-sm text-slate-600 mb-4">NF para uso de veiculo por empresa com KM e despesas</p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="input-label">ID do Uso (Veiculo/Empresa)</label>
+                  <input
+                    type="number"
+                    value={nfUsoId}
+                    onChange={(e) => setNfUsoId(e.target.value)}
+                    className="input-field"
+                    placeholder="ID do uso_veiculo_empresa"
+                    min="1"
+                  />
+                </div>
+                <button
+                  onClick={handlePdfNF}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  disabled={loading === 'nf-pdf' || !nfUsoId}
+                >
+                  {loading === 'nf-pdf' ? <LoadingSpinner /> : <Download size={16} />}
+                  Gerar NF
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {reports.map((report) => {
-            const IconComponent = report.icon
-            const colorClasses = getColorClasses(report.color)
-            const iconColorClasses = getIconColorClasses(report.color)
-            const isDisabled = report.needsDate && (!dateRange.start || !dateRange.end)
+        {/* ====================== SEÇÃO 2: EXPORTAÇÕES ====================== */}
+        <div>
+          <h2 className="text-xl font-display font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <FileSpreadsheet size={22} className="text-green-600" />
+            Exportacoes CSV / XLSX
+          </h2>
 
-            return (
-              <div key={report.id} className="card card-hover transition-all duration-200">
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`p-3 rounded-xl ${iconColorClasses}`}>
-                    <IconComponent size={24} />
-                  </div>
-                  {!report.needsDate && (
-                    <span className="badge badge-info text-xs">Sem periodo</span>
-                  )}
-                </div>
+          {/* Filtros gerais */}
+          <div className="card mb-6">
+            <h3 className="text-sm font-display font-bold text-slate-700 mb-3">Filtros de Exportacao</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="input-label">Data Inicio</label>
+                <input type="date" value={exportDates.start} onChange={(e) => setExportDates({ ...exportDates, start: e.target.value })} className="input-field" />
+              </div>
+              <div>
+                <label className="input-label">Data Fim</label>
+                <input type="date" value={exportDates.end} onChange={(e) => setExportDates({ ...exportDates, end: e.target.value })} className="input-field" />
+              </div>
+              <div>
+                <label className="input-label">Status (veiculos/contratos)</label>
+                <select value={exportStatus} onChange={(e) => setExportStatus(e.target.value)} className="input-field">
+                  <option value="">Todos</option>
+                  <option value="ativo">Ativo</option>
+                  <option value="finalizado">Finalizado</option>
+                  <option value="disponivel">Disponivel</option>
+                  <option value="alugado">Alugado</option>
+                  <option value="manutencao">Manutencao</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button className="btn-secondary w-full" onClick={() => { setExportDates({ start: '', end: '' }); setExportStatus(''); toast.success('Filtros limpos') }}>
+                  Limpar Filtros
+                </button>
+              </div>
+            </div>
+          </div>
 
-                <h3 className="text-lg font-display font-bold text-slate-900 mb-2">{report.name}</h3>
-                <p className="text-sm text-slate-600 mb-6 line-clamp-2">{report.description}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-                <div className="space-y-2">
-                  <button
-                    onClick={() => handleGenerateReport(report, 'pdf')}
-                    className="btn-primary w-full flex items-center justify-center gap-2 py-2 text-sm"
-                    disabled={isDisabled || loading === `${report.id}-pdf`}
-                  >
-                    {loading === `${report.id}-pdf` ? (
-                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></span>
-                    ) : (
-                      <Download size={16} />
-                    )}
-                    Gerar PDF
-                  </button>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => handleGenerateReport(report, 'print')}
-                      className="btn-secondary py-2 text-xs flex items-center justify-center gap-1"
-                      disabled={isDisabled || loading === `${report.id}-print`}
-                      title="Imprimir"
-                    >
-                      <Printer size={14} />
-                      Imprimir
-                    </button>
-                    <button
-                      onClick={() => handleGenerateReport(report, 'xlsx')}
-                      className="btn-secondary py-2 text-xs flex items-center justify-center gap-1"
-                      disabled={isDisabled || !report.xlsxEndpoint || loading === `${report.id}-xlsx`}
-                      title="Exportar Excel"
-                    >
-                      <FileSpreadsheet size={14} />
-                      Excel
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleGenerateReport(report, 'pdf').then(() => {})
-                      }}
-                      className="btn-secondary py-2 text-xs flex items-center justify-center gap-1"
-                      disabled={isDisabled}
-                      title="Visualizar"
-                    >
-                      <Eye size={14} />
-                      Ver
-                    </button>
-                  </div>
+            {/* Card: Exportar Clientes */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-cyan-100 text-cyan-700">
+                  <Users size={20} />
                 </div>
               </div>
-            )
-          })}
-        </div>
+              <h3 className="text-base font-display font-bold text-slate-900 mb-1">Clientes</h3>
+              <p className="text-xs text-slate-500 mb-4">Nome, CPF, CNH, score, contratos</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => handleExport('clientes', 'xlsx')} className="btn-primary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'clientes-xlsx'}>
+                  {loading === 'clientes-xlsx' ? <LoadingSpinner /> : <FileSpreadsheet size={14} />} XLSX
+                </button>
+                <button onClick={() => handleExport('clientes', 'csv')} className="btn-secondary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'clientes-csv'}>
+                  {loading === 'clientes-csv' ? <LoadingSpinner /> : <Download size={14} />} CSV
+                </button>
+              </div>
+            </div>
 
-        {generatedReports.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-display font-bold text-slate-900 mb-6">Relatorios Gerados</h2>
-            <div className="space-y-3">
-              {generatedReports.map((report) => (
-                <div
-                  key={report.id}
-                  className="flex items-center justify-between p-4 border border-slate-200 rounded-xl hover:border-slate-300 transition-colors animate-fade-in"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-900">{report.name}</p>
-                    <p className="text-sm text-slate-500">{report.date}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`badge ${report.status === 'completo' ? 'badge-success' : report.status === 'erro' ? 'badge-danger' : 'badge-warning'} text-xs`}>
-                      {report.status === 'completo' ? 'Completo' : report.status === 'erro' ? 'Erro' : 'Gerando...'}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteReport(report.id)}
-                      className="btn-icon p-1.5"
-                      title="Remover"
-                    >
-                      <Trash2 size={16} className="text-red-400 hover:text-red-600" />
-                    </button>
-                  </div>
+            {/* Card: Exportar Veiculos */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-purple-100 text-purple-700">
+                  <Car size={20} />
                 </div>
-              ))}
+              </div>
+              <h3 className="text-base font-display font-bold text-slate-900 mb-1">Veiculos</h3>
+              <p className="text-xs text-slate-500 mb-4">Placa, marca, KM, status, ROI</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => handleExport('veiculos', 'xlsx')} className="btn-primary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'veiculos-xlsx'}>
+                  {loading === 'veiculos-xlsx' ? <LoadingSpinner /> : <FileSpreadsheet size={14} />} XLSX
+                </button>
+                <button onClick={() => handleExport('veiculos', 'csv')} className="btn-secondary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'veiculos-csv'}>
+                  {loading === 'veiculos-csv' ? <LoadingSpinner /> : <Download size={14} />} CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Card: Exportar Contratos */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700">
+                  <FileText size={20} />
+                </div>
+              </div>
+              <h3 className="text-base font-display font-bold text-slate-900 mb-1">Contratos</h3>
+              <p className="text-xs text-slate-500 mb-4">Cliente, veiculo, datas, KM, valores</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => handleExport('contratos', 'xlsx')} className="btn-primary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'contratos-xlsx'}>
+                  {loading === 'contratos-xlsx' ? <LoadingSpinner /> : <FileSpreadsheet size={14} />} XLSX
+                </button>
+                <button onClick={() => handleExport('contratos', 'csv')} className="btn-secondary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'contratos-csv'}>
+                  {loading === 'contratos-csv' ? <LoadingSpinner /> : <Download size={14} />} CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Card: Exportar Financeiro */}
+            <div className="card card-hover">
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-green-100 text-green-700">
+                  <BarChart3 size={20} />
+                </div>
+              </div>
+              <h3 className="text-base font-display font-bold text-slate-900 mb-1">Financeiro</h3>
+              <p className="text-xs text-slate-500 mb-4">Multi-aba: receitas, despesas, seguros</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => handleExport('financeiro', 'xlsx')} className="btn-primary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'financeiro-xlsx'}>
+                  {loading === 'financeiro-xlsx' ? <LoadingSpinner /> : <FileSpreadsheet size={14} />} XLSX
+                </button>
+                <button onClick={() => handleExport('financeiro', 'csv')} className="btn-secondary py-2 text-xs flex items-center justify-center gap-1" disabled={loading === 'financeiro-csv'}>
+                  {loading === 'financeiro-csv' ? <LoadingSpinner /> : <Download size={14} />} CSV
+                </button>
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </AppLayout>
   )
