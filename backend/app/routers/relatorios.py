@@ -91,11 +91,15 @@ def get_financeiro_pdf(
 def get_nf_pdf(
     uso_id: int,
     km_percorrido: Optional[float] = None,
+    km_referencia: Optional[float] = None,
+    valor_km_extra: Optional[float] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Generate NF PDF for a single vehicle usage.
-    km_percorrido: KM digitado pelo usuario (se omitido, usa o do registro).
+    km_percorrido: KM digitado pelo usuario.
+    km_referencia: KM permitido (override, se omitido usa do cadastro).
+    valor_km_extra: Taxa por KM extra (override, se omitido usa do cadastro).
     """
     uso = db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.id == uso_id).first()
     if not uso:
@@ -111,7 +115,11 @@ def get_nf_pdf(
         db.commit()
 
     try:
-        pdf_buffer = PDFNFService.generate_nf_pdf(db, uso_id, km_percorrido)
+        pdf_buffer = PDFNFService.generate_nf_pdf(
+            db, uso_id, km_percorrido,
+            km_referencia_override=km_referencia,
+            valor_km_extra_override=valor_km_extra
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail="Erro ao gerar NF: {}".format(str(e)))
 
@@ -138,6 +146,8 @@ from typing import List as TypingList
 class VeiculoKM(PydanticBase):
     uso_id: int
     km_percorrido: float
+    km_referencia: Optional[float] = None
+    valor_km_extra: Optional[float] = None
 
 
 class NFEmpresaRequest(PydanticBase):
@@ -168,7 +178,15 @@ def get_nf_empresa_pdf(
             uso.km_percorrido = item.km_percorrido
     db.commit()
 
-    veiculos_km = [{"uso_id": v.uso_id, "km_percorrido": v.km_percorrido} for v in request.veiculos]
+    veiculos_km = [
+        {
+            "uso_id": v.uso_id,
+            "km_percorrido": v.km_percorrido,
+            "km_referencia": v.km_referencia,
+            "valor_km_extra": v.valor_km_extra,
+        }
+        for v in request.veiculos
+    ]
 
     try:
         pdf_buffer = PDFNFService.generate_nf_empresa_pdf(db, request.empresa_id, veiculos_km)

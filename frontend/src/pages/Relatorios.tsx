@@ -22,6 +22,8 @@ interface VeiculoUso {
   status: string
   selected: boolean
   km_input: string
+  km_permitido_input: string
+  valor_km_extra_input: string
 }
 
 const Relatorios: React.FC = () => {
@@ -77,7 +79,9 @@ const Relatorios: React.FC = () => {
       const data = (res.data || []).map((u: any) => ({
         ...u,
         selected: false,
-        km_input: u.km_percorrido ? String(u.km_percorrido) : '',
+        km_input: '',
+        km_permitido_input: u.km_referencia ? String(u.km_referencia) : '',
+        valor_km_extra_input: u.valor_km_extra ? String(u.valor_km_extra) : '',
       }))
       setVeiculosUso(data)
     } catch {
@@ -143,10 +147,12 @@ const Relatorios: React.FC = () => {
     setLoading(`nf-single-${uso.id}`)
     const tid = toast.loading(`Gerando NF para ${uso.placa}...`)
     try {
-      await downloadFile(
-        `/relatorios/nf/${uso.id}/pdf?km_percorrido=${km}`,
-        `nf_${uso.placa}.pdf`
-      )
+      let url = `/relatorios/nf/${uso.id}/pdf?km_percorrido=${km}`
+      const kmPermitido = parseFloat(uso.km_permitido_input)
+      const valorExtra = parseFloat(uso.valor_km_extra_input)
+      if (kmPermitido >= 0 && uso.km_permitido_input) url += `&km_referencia=${kmPermitido}`
+      if (valorExtra >= 0 && uso.valor_km_extra_input) url += `&valor_km_extra=${valorExtra}`
+      await downloadFile(url, `nf_${uso.placa}.pdf`)
       toast.dismiss(tid)
       toast.success(`NF gerada para ${uso.placa}!`)
     } catch (e: any) {
@@ -173,10 +179,17 @@ const Relatorios: React.FC = () => {
     try {
       const body = {
         empresa_id: parseInt(selectedEmpresa),
-        veiculos: selecionados.map(v => ({
-          uso_id: v.id,
-          km_percorrido: parseFloat(v.km_input),
-        })),
+        veiculos: selecionados.map(v => {
+          const item: any = {
+            uso_id: v.id,
+            km_percorrido: parseFloat(v.km_input),
+          }
+          const kmPerm = parseFloat(v.km_permitido_input)
+          const valExtra = parseFloat(v.valor_km_extra_input)
+          if (kmPerm >= 0 && v.km_permitido_input) item.km_referencia = kmPerm
+          if (valExtra >= 0 && v.valor_km_extra_input) item.valor_km_extra = valExtra
+          return item
+        }),
       }
       await downloadFile('/relatorios/nf/empresa/pdf', `nf_consolidada_empresa.pdf`, 'POST', body)
       toast.dismiss(tid)
@@ -198,6 +211,14 @@ const Relatorios: React.FC = () => {
 
   const updateKmInput = (id: number, value: string) => {
     setVeiculosUso(prev => prev.map(v => v.id === id ? { ...v, km_input: value } : v))
+  }
+
+  const updateKmPermitido = (id: number, value: string) => {
+    setVeiculosUso(prev => prev.map(v => v.id === id ? { ...v, km_permitido_input: value } : v))
+  }
+
+  const updateValorKmExtra = (id: number, value: string) => {
+    setVeiculosUso(prev => prev.map(v => v.id === id ? { ...v, valor_km_extra_input: value } : v))
   }
 
   const handleExport = async (entity: string, formato: string) => {
@@ -354,84 +375,106 @@ const Relatorios: React.FC = () => {
               <p className="text-xs text-slate-400 mt-1">Cadastre veiculos no menu Empresas para poder gerar NFs.</p>
             </div>
           ) : veiculosUso.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {veiculosUso.map((v) => {
                 const kmInput = parseFloat(v.km_input) || 0
-                const kmPermitido = v.km_referencia || 0
+                const kmPermitido = parseFloat(v.km_permitido_input) || 0
+                const valorKmExtra = parseFloat(v.valor_km_extra_input) || 0
                 const excedeu = kmInput > kmPermitido && kmPermitido > 0
                 const kmExcedente = excedeu ? kmInput - kmPermitido : 0
-                const valorExtra = kmExcedente * (v.valor_km_extra || 0)
+                const valorExtra = kmExcedente * valorKmExtra
 
                 return (
                   <div key={v.id} className={`card border-l-4 ${v.selected ? 'border-l-blue-500 bg-blue-50/30' : 'border-l-slate-200'}`}>
-                    <div className="flex flex-col md:flex-row md:items-center gap-4">
-                      {/* Checkbox + Info */}
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={v.selected}
-                          onChange={() => toggleVeiculoSelection(v.id)}
-                          className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900">{v.placa}</span>
-                            <span className="text-sm text-slate-500">{v.marca} {v.modelo}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${v.status === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                              {v.status}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
-                            <span>KM Permitido: <b className="text-slate-700">{kmPermitido > 0 ? `${kmPermitido.toLocaleString()} km` : 'Ilimitado'}</b></span>
-                            <span>Taxa Extra: <b className="text-slate-700">{v.valor_km_extra ? `R$ ${Number(v.valor_km_extra).toFixed(2)}/km` : 'N/A'}</b></span>
-                            {v.valor_diaria_empresa && <span>Diaria: <b className="text-slate-700">R$ {Number(v.valor_diaria_empresa).toFixed(2)}</b></span>}
-                            {v.data_inicio && <span>Inicio: <b className="text-slate-700">{new Date(v.data_inicio).toLocaleDateString('pt-BR')}</b></span>}
-                          </div>
+                    {/* Header: Checkbox + Placa + Info + NF Button */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <input
+                        type="checkbox"
+                        checked={v.selected}
+                        onChange={() => toggleVeiculoSelection(v.id)}
+                        className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-900 text-lg">{v.placa}</span>
+                          <span className="text-sm text-slate-500">{v.marca} {v.modelo}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${v.status === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {v.status}
+                          </span>
+                          {v.data_inicio && <span className="text-xs text-slate-400">Inicio: {new Date(v.data_inicio).toLocaleDateString('pt-BR')}</span>}
+                          {v.valor_diaria_empresa && <span className="text-xs text-slate-400">Diaria: R$ {Number(v.valor_diaria_empresa).toFixed(2)}</span>}
                         </div>
                       </div>
+                      <button
+                        onClick={() => handleNfSingle(v)}
+                        className="btn-secondary text-xs py-2 px-3 whitespace-nowrap flex items-center gap-1"
+                        disabled={loading === `nf-single-${v.id}` || !v.km_input}
+                      >
+                        {loading === `nf-single-${v.id}` ? <LoadingSpinner /> : <Download size={12} />}
+                        NF Individual
+                      </button>
+                    </div>
 
-                      {/* KM Input */}
-                      <div className="flex items-center gap-3">
-                        <div className="w-40">
-                          <label className="text-xs text-slate-500 mb-1 block">KM Percorrido</label>
-                          <input
-                            type="number"
-                            value={v.km_input}
-                            onChange={(e) => updateKmInput(v.id, e.target.value)}
-                            className="input-field text-sm"
-                            placeholder="Ex: 3500"
-                            min="0"
-                            step="0.1"
-                          />
-                        </div>
-
-                        {/* Status indicator */}
-                        {kmInput > 0 && kmPermitido > 0 && (
-                          <div className={`text-xs text-center px-2 py-1 rounded-lg min-w-[90px] ${excedeu ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {/* Campos editáveis */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                      <div>
+                        <label className="text-xs text-slate-500 mb-1 block font-medium">KM Percorrido *</label>
+                        <input
+                          type="number"
+                          value={v.km_input}
+                          onChange={(e) => updateKmInput(v.id, e.target.value)}
+                          className="input-field text-sm"
+                          placeholder="Digitar KM"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 mb-1 block font-medium">KM Permitido</label>
+                        <input
+                          type="number"
+                          value={v.km_permitido_input}
+                          onChange={(e) => updateKmPermitido(v.id, e.target.value)}
+                          className="input-field text-sm"
+                          placeholder="KM limite"
+                          min="0"
+                          step="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 mb-1 block font-medium">Valor KM Extra (R$)</label>
+                        <input
+                          type="number"
+                          value={v.valor_km_extra_input}
+                          onChange={(e) => updateValorKmExtra(v.id, e.target.value)}
+                          className="input-field text-sm"
+                          placeholder="R$/km"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                      {/* Status indicator */}
+                      <div className="flex items-center justify-center">
+                        {kmInput > 0 && kmPermitido > 0 ? (
+                          <div className={`text-xs text-center px-3 py-2 rounded-lg w-full ${excedeu ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
                             {excedeu ? (
                               <>
-                                <AlertTriangle size={12} className="inline mr-1" />
-                                +{kmExcedente.toFixed(0)} km
-                                <div className="font-bold">R$ {valorExtra.toFixed(2)}</div>
+                                <AlertTriangle size={14} className="inline mr-1" />
+                                <span className="font-bold">+{kmExcedente.toFixed(0)} km excedente</span>
+                                <div className="font-bold text-sm mt-0.5">R$ {valorExtra.toFixed(2)}</div>
                               </>
                             ) : (
                               <>
-                                <CheckCircle2 size={12} className="inline mr-1" />
-                                OK
+                                <CheckCircle2 size={14} className="inline mr-1" />
+                                <span className="font-bold">Dentro do limite</span>
                               </>
                             )}
                           </div>
+                        ) : (
+                          <div className="text-xs text-center px-3 py-2 rounded-lg w-full bg-slate-50 text-slate-400">
+                            Preencha os campos
+                          </div>
                         )}
-
-                        {/* Individual NF button */}
-                        <button
-                          onClick={() => handleNfSingle(v)}
-                          className="btn-secondary text-xs py-2 px-3 whitespace-nowrap"
-                          disabled={loading === `nf-single-${v.id}` || !v.km_input}
-                        >
-                          {loading === `nf-single-${v.id}` ? <LoadingSpinner /> : <Download size={12} />}
-                          <span className="ml-1">NF Individual</span>
-                        </button>
                       </div>
                     </div>
                   </div>

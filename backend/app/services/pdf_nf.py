@@ -98,7 +98,9 @@ class PDFNFService:
         return styles
 
     @staticmethod
-    def generate_nf_pdf(db, uso_id: int, km_percorrido: float = None) -> BytesIO:
+    def generate_nf_pdf(db, uso_id: int, km_percorrido: float = None,
+                        km_referencia_override: float = None,
+                        valor_km_extra_override: float = None) -> BytesIO:
         """
         Generate NF PDF for a single vehicle usage.
 
@@ -106,6 +108,8 @@ class PDFNFService:
             db: SQLAlchemy session
             uso_id: ID of UsoVeiculoEmpresa
             km_percorrido: KM digitado pelo usuário (se None, usa o que está no registro)
+            km_referencia_override: KM permitido customizado (se None, usa do cadastro)
+            valor_km_extra_override: Valor KM extra customizado (se None, usa do cadastro)
         """
         uso = db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.id == uso_id).first()
         if not uso:
@@ -121,20 +125,20 @@ class PDFNFService:
 
         despesas = db.query(DespesaNF).filter(DespesaNF.uso_id == uso_id).all()
 
-        # Use km_percorrido from parameter, or from record, or calculate
+        # Use km_percorrido from parameter, or from record
         if km_percorrido is not None:
             km_real = km_percorrido
         elif uso.km_percorrido:
             km_real = uso.km_percorrido
-        elif uso.km_final and uso.km_inicial:
-            km_real = uso.km_final - uso.km_inicial
         else:
             km_real = 0
 
+        # Use overrides or DB values
+        km_permitido = km_referencia_override if km_referencia_override is not None else (uso.km_referencia or 0)
+        taxa_km_extra = valor_km_extra_override if valor_km_extra_override is not None else float(uso.valor_km_extra or 0)
+
         # Calculate KM excedente
-        km_permitido = uso.km_referencia or 0
         km_excedente = max(0, km_real - km_permitido)
-        taxa_km_extra = float(uso.valor_km_extra or 0)
         valor_km_excedente = km_excedente * taxa_km_extra
 
         # Calculate despesas total
@@ -243,10 +247,6 @@ class PDFNFService:
              Paragraph(f"{PDFNFService._format_date(uso.data_inicio)} a {PDFNFService._format_date(uso.data_fim)}", styles['normal_nf']),
              Paragraph("<b>Dias:</b>", styles['normal_nf']),
              Paragraph(str(dias), styles['normal_nf'])],
-            [Paragraph("<b>KM Inicial:</b>", styles['normal_nf']),
-             Paragraph(f"{uso.km_inicial or 0:,.0f} km", styles['normal_nf']),
-             Paragraph("<b>KM Final:</b>", styles['normal_nf']),
-             Paragraph(f"{(uso.km_final or 0):,.0f} km", styles['normal_nf'])],
             [Paragraph("<b>KM Percorrido:</b>", styles['bold_nf']),
              Paragraph(f"<b>{km_real:,.1f} km</b>", styles['normal_nf']),
              Paragraph("<b>KM Permitido:</b>", styles['normal_nf']),
@@ -451,6 +451,8 @@ class PDFNFService:
         for item in veiculos_km:
             uso_id = item.get("uso_id")
             km_input = item.get("km_percorrido", 0)
+            km_ref_override = item.get("km_referencia")
+            taxa_override = item.get("valor_km_extra")
 
             uso = db.query(UsoVeiculoEmpresa).filter(UsoVeiculoEmpresa.id == uso_id).first()
             if not uso:
@@ -459,12 +461,10 @@ class PDFNFService:
             veiculo = db.query(Veiculo).filter(Veiculo.id == uso.veiculo_id).first()
             despesas = db.query(DespesaNF).filter(DespesaNF.uso_id == uso_id).all()
 
-            km_real = km_input or uso.km_percorrido or (
-                (uso.km_final - uso.km_inicial) if uso.km_final and uso.km_inicial else 0
-            )
-            km_permitido = uso.km_referencia or 0
+            km_real = km_input or uso.km_percorrido or 0
+            km_permitido = km_ref_override if km_ref_override is not None else (uso.km_referencia or 0)
+            taxa = taxa_override if taxa_override is not None else float(uso.valor_km_extra or 0)
             km_exc = max(0, km_real - km_permitido)
-            taxa = float(uso.valor_km_extra or 0)
             valor_exc = km_exc * taxa
             total_desp = sum(float(d.valor or 0) for d in despesas)
 
